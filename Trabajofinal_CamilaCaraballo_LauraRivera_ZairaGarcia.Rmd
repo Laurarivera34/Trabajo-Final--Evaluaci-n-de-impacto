@@ -1,6 +1,6 @@
 ---
-title: "Taller 4 - Diferencias en Diferencias"
-author: "Maria Camila Caraballo, Laura Sarif Rivera"
+title: "Trabajo final"
+author: "Maria Camila Caraballo, Laura Sarif Rivera, Zaira Garcia"
 output:
   pdf_document:
     latex_engine: xelatex
@@ -16,7 +16,7 @@ knitr::opts_chunk$set(
   message = FALSE,
   warning = FALSE
 )
-knitr::opts_knit$set(root.dir = "C:/1. MECA/2025/EVALUACIACÓN DE IMPACTO- Raachid Raaj/Taller 4- Diiff and Diif/Taller4-DifinDif")
+knitr::opts_knit$set(root.dir = "C:/1. MECA/2025/EVALUACIACÓN DE IMPACTO- Raachid Raaj/Trabajo final/Trabajo-Final--Evaluaci-n-de-impacto")
 
 tinytex::tlmgr_update(self = TRUE, all = TRUE)
 
@@ -66,253 +66,107 @@ pacman::p_load(
   stargazer,    # Tablas de regresión con formato publicable.
   knitr,        # Reportes dinámicos en RMarkdown.
   modelsummary, # Tablas y resúmenes comparativos de modelos.
-  tinytex       # Soporte para compilar a PDF con LaTeX en RMarkdown.
+  tinytex,      # Soporte para compilar a PDF con LaTeX en RMarkdown.
+  readxl,
+  janitor       #clean names
 )
 
-library(lfe)
-
-# Leer archivo .dta
-data <- read_dta("SoapOperas2.dta")
+# Leer archivo excel
+educacion <- read_excel("Datos/PANEL_DE_EDUCACION(2023).xlsx")
+salud_servicios <- read_excel("Datos/PANEL_SALUD_Y_SERVICIOS.xlsx")
+violencia <- read_excel("Datos/PANEL_CONFLICTO_Y_VIOLENCIA(2024).xlsx")
 
 ```
+
+## Paso 1. Limpieza de datos 
 
 ```{r}
+# estandarizar nombres de variables
+educacion <- educacion %>% clean_names()
+salud_servicios <- salud_servicios %>% clean_names()
+violencia <- violencia %>% clean_names()
 
-# Establecemos la semilla de replicabilidad
-set.seed(201613424)
-n <- nrow(data) #Definir el tamaño de la base
+# renombrar variables 
+salud_servicios <- salud_servicios %>%
+  rename(codmpio = c_digo_dane_del_municipio,
+         ano = a_o)
 
-# Seleccionar el 5% al azar y eliminarlo de la base
-elim <- sample(1:n, size = round(0.05 * n))
+# convertirlo a numérico
+educacion <- educacion %>%
+  mutate(across(c(ano, codmpio), as.numeric))
 
-# Redefinir la base sin lo seleccionado 
-data_trim <- data[-elim, ]
+salud_servicios <- salud_servicios %>%
+  mutate(across(c(ano, codmpio), as.numeric))
 
-# Restringir la nueva base al percentil 95
-p95 <- quantile(data_trim$geoarea80, probs = 0.95, na.rm = TRUE)
-data_final <- subset(data_trim, geoarea80 <= p95)
+violencia <- violencia %>%
+  mutate(across(c(ano, codmpio), as.numeric))
+
+# revisar na de las bases
+colSums(is.na(educacion))
+colSums(is.na(salud_servicios))
+colSums(is.na(violencia))
+
+# eliminar columnas casi vacias
+educacion <- educacion %>% select(where(~ mean(is.na(.)) < 0.8))
+salud_servicios <- salud_servicios %>% select(where(~ mean(is.na(.)) < 0.8))
+violencia <- violencia %>% select(where(~ mean(is.na(.)) < 0.8))
+
+# eliminar duplicados 
+educacion <- educacion %>% distinct()
+salud_servicios <- salud_servicios %>% distinct()
+violencia <- violencia %>% distinct()
+
+# pegar bases
+base_total <- full_join(educacion, salud_servicios, violencia, by = c("codmpio", "ano"))
+
+# Variables numéricas
+num_vars <- base_total %>% select(where(is.numeric))
+
+# Boxplot de outliers
+boxplot(num_vars, main = "Distribución de variables numéricas (outliers posibles)")
+
+# imputar con la mediana
+base_total <- base_total %>%
+  mutate(
+    cobertura_energia = ifelse(is.na(cobertura_energia),
+                               median(cobertura_energia, na.rm = TRUE),
+                               cobertura_energia)
+  )
+
+
+
+```
+
+## Paso 2. Estadísticas descriptivas
+```{r}
+# estadísticas descriptivas
+educacion %>%
+  group_by(anio) %>%
+  summarise(total_estudiantes = sum(num_estudiantes, na.rm = TRUE),
+            promedio_docentes = mean(num_docentes, na.rm = TRUE))
+
+
+# gráfico de tendencias paralelas
+base_total %>%
+  group_by(anio, pdet) %>%
+  summarise(media_turismo = mean(agencias_viajes, na.rm = TRUE)) %>%
+  ggplot(aes(x = anio, y = media_turismo, color = factor(pdet))) +
+  geom_line(size = 1.2) +
+  geom_vline(xintercept = 2017, linetype = "dashed") +
+  labs(title = "Tendencias del turismo formal en municipios PDET vs no PDET",
+       color = "PDET")
+
 
 ```
 
-## Diferencias en Diferencias
-
-El propósito de este taller es replicar parte del análisis realizado por La Ferrara et al. (2012) en su estudio *“Soap Operas and Fertility: Evidence from Brazil”*, en el que se evalúa cómo la exposición a telenovelas incide en las decisiones reproductivas de las mujeres. A partir de la base de datos utilizada por los autores, se busca estimar el efecto de la llegada de la cadena Globo sobre la probabilidad de dar a luz y explorar posibles heterogeneidades según características como edad, educación y nivel socioeconómico. El ejercicio permitirá aplicar la metodología de Diferencias en Diferencias con regresiones y efectos fijos para interpretar empíricamente la relación entre medios de comunicación y comportamientos demográficos.
-
-### 1. Análisis introductorio
-
-**Con base en el artículo escriba la especificación principal de los autores en niveles y describan cada una de sus variables explicativas**
-
-$$ Y_{ijt} = X_{ijt}\beta + \gamma G_{ij} + \mu_j + \lambda_t+\epsilon_{ijt} $$
-
-Donde $y_{ijt}$ es igual a 1 si la mujer *i* que vive en el área *j* da a luz a un hijo en el año *t,* $G_{jt}$ es una variable dicótoma igual a 1 si el área *j* recibió la señal de Rede Globo al menos un año antes del año *t* (para reflejar la duración del embarazo); $X_{ijt}$ es un conjunto de controles que varían en el tiempo tanto a nivel individual como a nivel del área metropolitana (AMC); $\mu_j$ son efectos fijos por área AMC y $\lambda_t$ son efectos fijos del año. Una vez incluidos los efectos de área se controla por características inonservables e invariantes en el tiempo que pueden afectar la fertilidad y estar posiblemente relacionadas con la entrada de Globo.
-
-**¿Cuál es el supuesto de identificación detrás de este modelo?**
-
-De acuerdo con los autores, el supuesto de identificación para este modelo es que, condicional a los efectos fijos de área, de tiempo y los controles expresados en el vector $X_{ijt}$, el año de entrada de Globo es ortogonal al término de error. En este contexto, la ortogonalidad implica que la llegada de Globo al área no está relacionada con otros factores no observados que de alguna manera afectan la fertilidad. En general, esto garantiza que el efecto estimado de la presencia de Globo sobre la fertilidad se pueda interpretar como causal.
-
-**Estime el modelo sin controles y sin efectos fijos de área, sin controles pero con efectos fijos de área y con controles y efectos fijos de área. Analice y presente los resultados.**[^1]
-
-[^1]: *Nota: para todos los modelos incluya efectos fijos de tiempo, ajuste por sobremuestreo (ponderando las observaciones por la variable weight) y clusterice errores por área.*
-
-```{r results='asis'}
-
-# Modelo 1: sin controles, efectos fijos de tiempo
-m1_felm <- felm(B ~ globocoverage1 | year | 0 | amc_code, 
-                data = data_final, weights = data_final$weight)
-
-# Modelo 2: efectos fijos de área y tiempo
-m2_felm <- felm(B ~ globocoverage1 | amc_code + year | 0 | amc_code, 
-                data = data_final, weights = data_final$weight)
-
-# Modelo 3: con controles + efectos fijos de área y tiempo
-m3_felm <- felm(B ~ globocoverage1 + age + agesq + yrs_edu + yrsedu_head +
-                  wealth_noTV + catholic + rural + Doctors + ipc_renta + stock + stocksq |
-                  amc_code + year | 0 | amc_code,
-                data = data_final, weights = data_final$weight)
-
-# Exportar con stargazer
-tabla_1 <- capture.output(
-  stargazer(m1_felm, m2_felm, m3_felm,
-          type = "latex",
-          dep.var.labels = "Nacimientos",
-          column.labels = c("Modelo 1", "Modelo 2", "Modelo 3"),
-          covariate.labels = c(
-            "Cobertura Globo",
-            "Edad",
-            "Edad al cuadrado",
-            "Años de educación (mujer)",
-            "Años de educación (jefe de hogar)",
-            "Riqueza (sin TV)",
-            "Católica",
-            "Rural",
-            "Doctores per cápita",
-            "Ingreso per cápita (IPC renta)",
-            "Stock de TV",
-            "Stock de TV al cuadrado"
-          ),
-          title = "Impacto de la cobertura de Globo sobre la fertilidad",
-          label = "tab:globo_fertilidad",
-          out = "tablas/modelos_globo.tex")
+## Paso 3. Modelos DiD
+```{r}
+modelo_did <- feols(
+  agencias_viajes ~ pdet * post + cobertura_energia + cobertura_acueducto + cobertura_internet | cod_municipio + anio,
+  cluster = ~subregion_pdet,
+  data = base_total
 )
 
-# Quitar comentarios de stargazer
-tabla_1 <- tabla_1[!grepl("^%", tabla_1)]
-
-# Imprimir directamente para que LaTeX lo compile
-cat(tabla_1, sep = "\n")
-
-```
-\newpage
-### 2. Problemas de identificación
-
-Mencione dos de los retos de identificación mencionados por los autores sobre esta estimación y la forma como se puede corrregir con una técnica econométrica.
-
-El primer reto de identificación señalado por los autores fue la posibilidad de que la presencia del canal Globo estuviera correlacionada con determinantes inobservados de la fertilidad. La preocupación central era que la entrada de Globo pudiera estar asociada a tendencias preexistentes en las tasas de fertilidad. Para abordar este problema, los autores implementaron varias estrategias. En primer lugar, estimaron la fertilidad en función de una serie de variables dicotómicas que cubrían un rango de nueve años antes y después de la entrada de Globo, mostrando que no existía una disminución previa en la fertilidad antes de su llegada. En segundo lugar, utilizando datos del censo, comprobaron que, después de controlar por las mismas características incluidas en su regresión de referencia, el año de entrada de Globo no estaba correlacionado con el nivel inicial de fertilidad. Finalmente, realizaron regresiones placebo y evidenciaron que la futura entrada de Globo en un área no predecía la fertilidad actual, que los años de entrada generados aleatoriamente tampoco la anticipaban y que la presencia de Globo en áreas vecinas no influía en la fertilidad local.
-
-El segundo reto de identificación se relacionaba con un posible sesgo de selección en las áreas de ingreso de Globo. Dado que se trata de un productor de televisión comercial, era plausible que priorizara el ingreso a localidades con mayor nivel de ingresos, dado el potencial de obtener mayores ganancias publicitarias. Para mitigar este riesgo, los autores incluyeron en sus regresiones controles por nivel educativo, riqueza y un índice de consumo potencial utilizado por la propia cadena Globo para evaluar la conveniencia de nuevos mercados.
-
-\newpage
-
-### 3. Estimación del modelo
-
-Estime el modelo (3) del literal c, restringiendo los datos a aquellas mujeres con edad entre i) 15-24 ii) 25-34 y iii) 35-44 presente sus resultados en una misma tabla con cada modelo en una columna
-distinta.
-
-```{r results='asis'}
-
-# Modelo 1: Mujeres 15–24 años
-m1_age_felm <- felm(
-  B ~ globocoverage1 + age + agesq + yrs_edu + yrsedu_head +
-    wealth_noTV + catholic + rural + Doctors + ipc_renta + stock + stocksq |
-    amc_code + year | 0 | amc_code,
-  data = subset(data_final, age >= 15 & age <= 24),
-  weights = subset(data_final, age >= 15 & age <= 24)$weight
-)
-
-# Modelo 2: Mujeres 25–34 años
-m2_age_felm <- felm(
-  B ~ globocoverage1 + age + agesq + yrs_edu + yrsedu_head +
-    wealth_noTV + catholic + rural + Doctors + ipc_renta + stock + stocksq |
-    amc_code + year | 0 | amc_code,
-  data = subset(data_final, age >= 25 & age <= 34),
-  weights = subset(data_final, age >= 25 & age <= 34)$weight
-)
-
-# Modelo 3: Mujeres 35–44 años
-m3_age_felm <- felm(
-  B ~ globocoverage1 + age + agesq + yrs_edu + yrsedu_head +
-    wealth_noTV + catholic + rural + Doctors + ipc_renta + stock + stocksq |
-    amc_code + year | 0 | amc_code,
-  data = subset(data_final, age >= 35 & age <= 44),
-  weights = subset(data_final, age >= 35 & age <= 44)$weight
-)
-
-# Tabla con Stargazer
-tabla_2 <- capture.output (
-  stargazer(
-  m1_age_felm, m2_age_felm, m3_age_felm,
-  type = "latex",
-  dep.var.labels = "Nacimientos",
-  column.labels = c("15–24 años", "25–34 años", "35–44 años"),
-  covariate.labels = c(
-    "Cobertura Globo",
-    "Edad",
-    "Edad al cuadrado",
-    "Años de educación (mujer)",
-    "Años de educación (jefe de hogar)",
-    "Riqueza (sin TV)",
-    "Católica",
-    "Rural",
-    "Doctores per cápita",
-    "Ingreso per cápita (IPC renta)",
-    "Stock de TV",
-    "Stock de TV al cuadrado"
-  ),
-  title = "Impacto de la cobertura de Globo por rango de edad",
-  omit.stat = c("f"),
-  out = "tablas/tabla_edades_felm.tex"
- )
-)
-
-# Quitar comentarios de stargazer
-tabla_2 <- tabla_2[!grepl("^%", tabla_2)]
-
-# Imprimir directamente para que LaTeX lo compile
-cat(tabla_2, sep = "\n")
+summary(modelo_did)
 ```
 
-Los resultados del análisis muestran que el efecto de la cobertura de Globo sobre la fertilidad no es homogéneo, sino que varía de manera significativa según el grupo etario de las mujeres. Para aquellas entre los 15 y 24 años, el coeficiente estimado resulta negativo aunque no es significativo estadísticamente, lo cual indica que no hay evidencia suficiente para afirmar que la presencia de Globo influye en la fertilidad. Por otro lado, entre las mujeres de 25 a 34 años el coeficiente es negativo y significativo estadísticamente al 99%, lo cual sugiere que la exposición a Globo se asocia con una reducción de la probabilidad de tener hijos. Por último, para el grupo de mujeres de 35 a 44 años, el efecto también resulta negativo y estadísticamente significativo pero al 95%, implicando también que la presencia de Globo en este grupo de edad sí tiene un impacto en la fertilidad.
-
-Asimismo, los controles incluidos en las regresiones refuerzan la validez de los resultados y denotan patrones consistentes con lo esperado en la literatura pues a un mayor nivel educativo de la mujer hay una disminución en la fertilidad, especialmente en edades tempranas, confirmando así la relación entre acumulación de capital humano y postergación de la maternidad. Por otra parte, la educación del jefe del hogar tiende a estar relacionada con un incremento de la fertilidad, lo que puede reflejar dinámicas internas en la toma de decisiones del hogar o distintos roles dentro del hogar que pueden influir en las decisiones reproductivas. Adicional, se identifican efectos significativos de la riqueza en los hogares sin televisión y de la residencia en áreas rurales, destacando así la relevancia del contexto socioeconómico y territorial en la determinación de la fertilidad.
-
-### 4. Efectos heterogéneos
-
-Elija una de las siguientes variables y estime un modelo con efectos heterogéneos
-
--   Años de educación de la cabeza de hogar
-
--   Años de educación de la mujer
-
--   Riqueza del hogar
-
-Interprete los resultados del efecto heterogéneo estimado en el modelo y concluya sobre estos.
-
-```{r results='asis'}
-
-#Segmentación de intervalos 
-data_final$edu_group <- cut(
-  data_final$yrs_edu,
-  breaks = c(0, 5, 10, 15, max(data_final$yrs_edu, na.rm = TRUE)),
-  include.lowest = TRUE,
-  right = FALSE,
-  labels = c("0-4", "5-9", "10-14", "15+")
-)
-
-# Se escoge los años de educación de la mujer para estimar el modelo con interacción
-m_hetero_felm <- felm(
-  B ~ globocoverage1 * edu_group + age + agesq + yrsedu_head +
-    wealth_noTV + catholic + rural + Doctors + ipc_renta + stock + stocksq |
-    amc_code + year | 0 | amc_code,
-  data = data_final,
-  weights = data_final$weight
-)
-
-# Exportar resultados con Stargazer
-tabla_3 <- capture.output(stargazer(
-  m_hetero_felm,
-  type = "latex",
-  title = "Efectos heterogéneos de Globo por nivel educativo",
-  covariate.labels = c(
-    "Cobertura Globo",
-    "Globo × Educación 5–9",
-    "Globo × Educación 10–14",
-    "Globo × Educación 15+",
-    "Edad",
-    "Edad al cuadrado",
-    "Años de educación (jefe de hogar)",
-    "Riqueza (sin TV)",
-    "Católica",
-    "Rural",
-    "Doctores per cápita",
-    "Ingreso per cápita (IPC renta)",
-    "Stock de TV",
-    "Stock de TV al cuadrado"
-  ),
-  dep.var.labels = "Nacimientos",
-  out = "tablas/efectos_globo_grupos.tex"
-))
-
-# Quitar comentarios de stargazer
-tabla_3 <- tabla_3[!grepl("^%", tabla_3)]
-
-# Imprimir directamente para que LaTeX lo compile
-cat(tabla_3, sep = "\n")
-
-```
-\newpage
-
-Los resultados del modelo con interacción sugieren que la cobertura de Globo tiene un efecto negativo y significativo al 99% sobre la fertilidad, pero este impacto no es homogéneo entre todas las mujeres, sino que varía en función de su nivel educativo. Mientras que la educación, de manera independiente, ya está asociada con una menor probabilidad de tener hijos, el término de interacción evidencia que el efecto reductor de Globo es más pronunciado en los grupos con mayor escolaridad.
-
-A medida que aumentan los años de escolaridad, el efecto de Globo sobre la reducción de la fertilidad se intensifica, siendo más marcado en mujeres con educación intermedia y alta. Esto sugiere que los contenidos transmitidos por Globo influyen con mayor fuerza en las decisiones reproductivas de las mujeres más educadas, quienes, gracias a su capital educativo, están en mejores condiciones de interpretar y apropiarse de los modelos familiares y proyectos de vida presentados en las telenovelas.
-
-En conjunto, los hallazgos muestran que, aunque tanto la educación como la exposición a Globo reducen los niveles de fertilidad, el efecto marginal de Globo es más fuerte y visible en los segmentos menos educados de la población femenina. Las mujeres con mayor educación, en contraste, ya presentan patrones de baja fecundidad, lo que limita la capacidad adicional de Globo para influir en sus decisiones reproductivas.
