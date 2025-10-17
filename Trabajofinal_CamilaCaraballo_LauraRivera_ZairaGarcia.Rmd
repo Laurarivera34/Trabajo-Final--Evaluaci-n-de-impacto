@@ -82,7 +82,7 @@ mpiopdet <- read_excel("Datos/MunicipiosPDET.xlsx")
 
 ```
 
-## Paso 1. Limpieza de datos 
+## Paso 1. Limpieza de datos
 
 ```{r}
 # estandarizar nombres de variables
@@ -185,6 +185,7 @@ colSums(is.na(datoscede))
 ```
 
 ## Paso 2. Estadísticas descriptivas
+
 ```{r}
 # estadísticas descriptivas por grupo PDET
 tabla_estadisticas <- datoscede %>%
@@ -217,7 +218,7 @@ save_kable(tabla_html, "graficos-tablas/tabla_estadisticas_pdet.html")
 ```
 
 ## Paso 3. Modelos DiD
+
 ```{r}
 
 ```
-
