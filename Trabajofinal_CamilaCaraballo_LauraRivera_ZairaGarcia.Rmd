@@ -188,27 +188,69 @@ colSums(is.na(datoscede))
 
 ```{r}
 # estadísticas descriptivas por grupo PDET
-tabla_estadisticas <- datoscede %>%
-  group_by(pdet) %>%
-  summarise(across(where(is.numeric),
-                   list(
-                     Min = ~min(.x, na.rm = TRUE),
-                     Max = ~max(.x, na.rm = TRUE),
-                     Promedio = ~mean(.x, na.rm = TRUE)
-                   )))
+vars_interes <- c("indrural", "discapital", "df_desemp_fisc",
+                  "homicidios", "extorsion", "t_establ_o")
 
-# crear tabla
-tabla_html <- tabla_estadisticas %>%
-  kable(caption = "Estadísticas descriptivas por grupo PDET",
-        digits = 2,
-        format = "html") %>%
+nombres_descriptivos <- c(
+  "Porcentaje rural",
+  "Porcentaje en capital",
+  "Desempleo fiscal (%)",
+  "Número de homicidios",
+  "Número de extorsiones",
+  "Número de establecimientos oficiales"
+)
+
+# Crear tabla vertical con estadísticas
+tabla_aer <- datoscede %>%
+  filter(pdet %in% c(0,1)) %>%
+  select(pdet, all_of(vars_interes)) %>%
+  pivot_longer(
+    cols = all_of(vars_interes),
+    names_to = "variable",
+    values_to = "valor"
+  ) %>%
+  group_by(pdet, variable) %>%
+  summarise(
+    Min = min(valor, na.rm = TRUE),
+    Max = max(valor, na.rm = TRUE),
+    Promedio = mean(valor, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  pivot_wider(
+    names_from = pdet,
+    values_from = c(Min, Max, Promedio),
+    names_prefix = "pdet_"
+  ) %>%
+  # Reemplazar nombres de variables por descriptivos
+  mutate(variable = nombres_descriptivos)
+
+# Crear tabla AER
+tabla_html <- tabla_aer %>%
+  kable(
+    caption = "Estadísticas descriptivas por municipio PDET y No PDET",
+    digits = 2,
+    format = "html",
+    col.names = c(
+      "Variable",
+      "Min (No PDET)", "Max (No PDET)", "Promedio (No PDET)",
+      "Min (PDET)", "Max (PDET)", "Promedio (PDET)"
+    )
+  ) %>%
   kable_classic(full_width = FALSE, html_font = "Cambria")
 
-# Guardar 
+# guardar 
 save_kable(tabla_html, "graficos-tablas/tabla_estadisticas_pdet.html")
 
 # análisis univariado
-
+datoscede %>%
+  filter(pdet %in% c(0,1)) %>%
+  pivot_longer(cols = all_of(vars_interes), names_to = "variable", values_to = "valor") %>%
+  ggplot(aes(x = factor(pdet), y = valor, fill = factor(pdet))) +
+  geom_boxplot() +
+  facet_wrap(~variable, scales = "free") +
+  scale_fill_manual(values = c("0" = "lightblue", "1" = "salmon"), labels = c("No PDET", "PDET")) +
+  labs(x = "Grupo PDET", y = "Valor", fill = "Grupo") +
+  theme_minimal()
 
 
 # gráfico de tendencias paralelas
