@@ -68,6 +68,7 @@ pacman::p_load(
   modelsummary, # Tablas y resúmenes comparativos de modelos.
   tinytex,      # Soporte para compilar a PDF con LaTeX en RMarkdown.
   readxl,
+  kableExtra,
   janitor       #clean names
 )
 
@@ -75,6 +76,9 @@ pacman::p_load(
 educacion <- read_excel("Datos/PANEL_DE_EDUCACION(2023).xlsx")
 salud_servicios <- read_excel("Datos/PANEL_SALUD_Y_SERVICIOS.xlsx")
 violencia <- read_excel("Datos/PANEL_CONFLICTO_Y_VIOLENCIA(2024).xlsx")
+gobierno <- read_excel("Datos/PANEL_BUEN_GOBIERNO(2024).xlsx")
+caracteristicas <- read_excel("Datos/PANEL_CARACTERISTICAS_GENERALES(2024).xlsx")
+mpiopdet <- read_excel("Datos/MunicipiosPDET.xlsx")
 
 ```
 
@@ -82,9 +86,7 @@ violencia <- read_excel("Datos/PANEL_CONFLICTO_Y_VIOLENCIA(2024).xlsx")
 
 ```{r}
 # estandarizar nombres de variables
-educacion <- educacion %>% clean_names()
 salud_servicios <- salud_servicios %>% clean_names()
-violencia <- violencia %>% clean_names()
 
 # renombrar variables 
 salud_servicios <- salud_servicios %>%
@@ -101,72 +103,121 @@ salud_servicios <- salud_servicios %>%
 violencia <- violencia %>%
   mutate(across(c(ano, codmpio), as.numeric))
 
-# revisar na de las bases
-colSums(is.na(educacion))
-colSums(is.na(salud_servicios))
-colSums(is.na(violencia))
+gobierno <- gobierno %>%
+  mutate(across(c(ano, codmpio), as.numeric))
 
-# eliminar columnas casi vacias
-educacion <- educacion %>% select(where(~ mean(is.na(.)) < 0.8))
-salud_servicios <- salud_servicios %>% select(where(~ mean(is.na(.)) < 0.8))
-violencia <- violencia %>% select(where(~ mean(is.na(.)) < 0.8))
-
-# eliminar duplicados 
-educacion <- educacion %>% distinct()
-salud_servicios <- salud_servicios %>% distinct()
-violencia <- violencia %>% distinct()
+caracteristicas <- caracteristicas %>%
+  mutate(across(c(ano, codmpio), as.numeric))
 
 # pegar bases
-base_total <- full_join(educacion, salud_servicios, violencia, by = c("codmpio", "ano"))
+base_total <- educacion %>%
+  full_join(salud_servicios, by = c("codmpio", "ano")) %>%
+  full_join(violencia, by = c("codmpio", "ano")) %>%
+  full_join(gobierno, by = c("codmpio", "ano")) %>%
+  full_join(caracteristicas, by = c("codmpio", "ano"))
 
-# Variables numéricas
-num_vars <- base_total %>% select(where(is.numeric))
+# estandarizar nombres de variables
+base_total <- base_total %>% clean_names()
 
-# Boxplot de outliers
-boxplot(num_vars, main = "Distribución de variables numéricas (outliers posibles)")
-
-# imputar con la mediana
-base_total <- base_total %>%
-  mutate(
-    cobertura_energia = ifelse(is.na(cobertura_energia),
-                               median(cobertura_energia, na.rm = TRUE),
-                               cobertura_energia)
+# base CEDE
+datoscede <- base_total %>%
+  select(
+    codmpio, ano,
+    mdm_g_ejecur,
+    df_desemp_fisc,
+    mdm_g_gobayt,
+    gandina, gcaribe, gpacifica, gorinoquia, gamazonia,
+    sisben_pobl_1, sisben_pobl_2, sisben_pobl_3, sisben_pobl_4,
+    sisben_pobl_5, sisben_pobl_6, sisben_pobl_7, sisben_pobl_8,
+    sisben_pobl_9, sisben_pobl_10,
+    altura, discapital, indrural,
+    homicidios, extorsion, errad_manual, o_desap_for, o_secuest, t_establ_o
   )
 
+# años seleccionados para el análisis
+datoscede <- datoscede %>%
+  filter(ano >= 2013 & ano <= 2021)
+
+# para base larga con la variable de regiones y sisben
+datoscede <- datoscede%>%
+  pivot_longer(
+    cols = c(gandina, gcaribe, gorinoquia, gpacifica, gamazonia),     names_to = "region",     values_to = "dummy_region"      
+  )
+
+datoscede <- datoscede%>%
+  pivot_longer(
+    cols = c(sisben_pobl_1, sisben_pobl_2, sisben_pobl_3, sisben_pobl_4, sisben_pobl_5, sisben_pobl_6, sisben_pobl_7, sisben_pobl_8, sisben_pobl_9, sisben_pobl_10),    
+names_to = "poblacion_sisben",   
+  values_to = "dummy_sisben")
 
 
+# unir con mpio pdet
+mpiopdet <- mpiopdet %>%
+  rename(
+    codmpio = `Código DANE Municipio`
+  ) %>%
+  mutate(
+    codmpio = as.numeric(codmpio),
+    pdet = 1
+  ) %>%
+  select(codmpio,pdet)
+
+# se une la base de mpio pdet para clasificarlos 
+datoscede <- datoscede %>%
+  left_join(mpiopdet, by = "codmpio") %>%
+  mutate(pdet = if_else(is.na(pdet), 0, 1))
+
+# eliminar duplicados
+datoscede <- datoscede %>%
+  distinct(codmpio, ano, .keep_all = TRUE)
+
+# eliminar na
+datoscede <- datoscede %>%
+  filter(!is.na(codmpio))
+
+# verificacion de los 170 mpios PDET
+datoscede %>%
+  filter(pdet == 1) %>%
+  summarise(total_pdet = n_distinct(codmpio))
+
+# verificación de na
+colSums(is.na(datoscede))
 ```
 
 ## Paso 2. Estadísticas descriptivas
 ```{r}
-# estadísticas descriptivas
-educacion %>%
-  group_by(anio) %>%
-  summarise(total_estudiantes = sum(num_estudiantes, na.rm = TRUE),
-            promedio_docentes = mean(num_docentes, na.rm = TRUE))
+# estadísticas descriptivas por grupo PDET
+tabla_estadisticas <- datoscede %>%
+  group_by(pdet) %>%
+  summarise(across(where(is.numeric),
+                   list(
+                     Min = ~min(.x, na.rm = TRUE),
+                     Max = ~max(.x, na.rm = TRUE),
+                     Promedio = ~mean(.x, na.rm = TRUE)
+                   )))
+
+# crear tabla
+tabla_html <- tabla_estadisticas %>%
+  kable(caption = "Estadísticas descriptivas por grupo PDET",
+        digits = 2,
+        format = "html") %>%
+  kable_classic(full_width = FALSE, html_font = "Cambria")
+
+# Guardar 
+save_kable(tabla_html, "graficos-tablas/tabla_estadisticas_pdet.html")
+
+# análisis univariado
+
 
 
 # gráfico de tendencias paralelas
-base_total %>%
-  group_by(anio, pdet) %>%
-  summarise(media_turismo = mean(agencias_viajes, na.rm = TRUE)) %>%
-  ggplot(aes(x = anio, y = media_turismo, color = factor(pdet))) +
-  geom_line(size = 1.2) +
-  geom_vline(xintercept = 2017, linetype = "dashed") +
-  labs(title = "Tendencias del turismo formal en municipios PDET vs no PDET",
-       color = "PDET")
+
 
 
 ```
 
 ## Paso 3. Modelos DiD
 ```{r}
-modelo_did <- feols(
-  agencias_viajes ~ pdet * post + cobertura_energia + cobertura_acueducto + cobertura_internet | cod_municipio + anio,
-  cluster = ~subregion_pdet,
-  data = base_total
-)
 
-summary(modelo_did)
 ```
 
