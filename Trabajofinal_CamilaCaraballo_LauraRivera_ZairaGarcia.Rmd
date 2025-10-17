@@ -78,7 +78,7 @@ violencia <- read_excel("Datos/PANEL_CONFLICTO_Y_VIOLENCIA(2024).xlsx")
 
 ```
 
-## Paso 1. Limpieza de datos 
+## Paso 1. Limpieza de datos
 
 ```{r}
 # estandarizar nombres de variables
@@ -138,6 +138,7 @@ base_total <- base_total %>%
 ```
 
 ## Paso 2. Estadísticas descriptivas
+
 ```{r}
 # estadísticas descriptivas
 educacion %>%
@@ -160,6 +161,7 @@ base_total %>%
 ```
 
 ## Paso 3. Modelos DiD
+
 ```{r}
 modelo_did <- feols(
   agencias_viajes ~ pdet * post + cobertura_energia + cobertura_acueducto + cobertura_internet | cod_municipio + anio,
@@ -169,4 +171,3 @@ modelo_did <- feols(
 
 summary(modelo_did)
 ```
-
