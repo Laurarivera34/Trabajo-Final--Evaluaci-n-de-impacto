@@ -266,33 +266,109 @@ ggsave("graficos-tablas/grafico_boxplot_pdet.png", grafico_pdet, width = 10, hei
 # Tabla de estadísticas descriptivas de homicidios por grupo PDET
 tabla_homicidios <- datoscede %>%
   filter(!is.na(pdet), !is.na(homicidios)) %>%
+  group_by(codmpio, pdet) %>%                     # 🔹 agrupa por municipio y grupo PDET
+  summarise(homicidios_total = sum(homicidios, na.rm = TRUE), .groups = "drop") %>%
   group_by(pdet) %>%
   summarise(
-    N_municipios = n(),
-    Min = min(homicidios, na.rm = TRUE),
-    Q1 = quantile(homicidios, 0.25, na.rm = TRUE),
-    Promedio = mean(homicidios, na.rm = TRUE),
-    Mediana = median(homicidios, na.rm = TRUE),
-    Q3 = quantile(homicidios, 0.75, na.rm = TRUE),
-    Max = max(homicidios, na.rm = TRUE),
-    Desviación = sd(homicidios, na.rm = TRUE)
+    N_municipios = n(),                            # ahora sí cuenta municipios únicos
+    Min = min(homicidios_total),
+    Q1 = quantile(homicidios_total, 0.25),
+    Promedio = mean(homicidios_total),
+    Mediana = median(homicidios_total),
+    Q3 = quantile(homicidios_total, 0.75),
+    Max = max(homicidios_total),
+    Desviación = sd(homicidios_total)
   ) %>%
   mutate(Grupo = ifelse(pdet == 1, "PDET", "No PDET")) %>%
   select(Grupo, everything(), -pdet)
 
-# Mostrar tabla en HTML bonito
-tabla_homicidios %>%
+# Tabla HTML
+tabla_html <- tabla_homicidios %>%
   kable(
-    caption = "Estadísticas descriptivas de homicidios por grupo PDET",
+    caption = "Estadísticas descriptivas de homicidios por grupo PDET (nivel municipal)",
     digits = 2,
     col.names = c("Grupo", "N", "Mínimo", "1er Cuartil", "Promedio", "Mediana", "3er Cuartil", "Máximo", "Desviación estándar")
   ) %>%
   kable_classic(full_width = FALSE, html_font = "Cambria")
 
+# Guardar como HTML
+save_kable(tabla_html, "Graficos-tablas/tabla_homicidios.html")
+```
 
-# gráfico de tendencias paralelas
+
+```{r}
+# Análisis univariado del índice de ruralidad por grupo pdet
+# Limpieza de datos 
+datoscede <- datoscede %>%
+  mutate(codmpio = as.integer(codmpio)) %>%       
+  distinct(codmpio, pdet, indrural, .keep_all = TRUE)
+
+# Consolidar base a nivel municipal
+datoscede_mpio <- datoscede %>%
+  filter(!is.na(codmpio)) %>%
+  group_by(codmpio) %>%
+  summarise(
+    pdet = max(pdet, na.rm = TRUE),
+    indrural = mean(indrural, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(pdet = ifelse(is.infinite(pdet), 0, pdet))
+
+# Revisar número de municipios PDET
+conteo <- datoscede_mpio %>% count(pdet)
+print(conteo)
+
+# Tabla descriptiva
+tabla_indrural <- datoscede_mpio %>%
+  group_by(pdet) %>%
+  summarise(
+    Municipios = n(),
+    Con_dato = sum(!is.na(indrural)),
+    Promedio = mean(indrural, na.rm = TRUE),
+    Mediana = median(indrural, na.rm = TRUE),
+    Desviación_estándar = sd(indrural, na.rm = TRUE),
+    Mínimo = min(indrural, na.rm = TRUE),
+    `1er_Cuartil` = quantile(indrural, 0.25, na.rm = TRUE),
+    `3er_Cuartil` = quantile(indrural, 0.75, na.rm = TRUE),
+    Máximo = max(indrural, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(Grupo = ifelse(pdet == 1, "PDET", "No PDET")) %>%
+  select(Grupo, everything(), -pdet)
+
+# Exportar tabla descriptiva a HTML 
+tabla_html <- tabla_indrural %>%
+  kable(
+    caption = "Estadísticas descriptivas del índice de ruralidad por grupo PDET",
+    digits = 3,
+    col.names = c("Grupo", "Municipios", "Con dato", "Promedio", "Mediana",
+                  "Desviación estándar", "Mínimo", "1er Cuartil", "3er Cuartil", "Máximo")
+  ) %>%
+  kable_classic(full_width = FALSE, html_font = "Cambria")
+
+# Guardar tabla HTML
+save_kable(tabla_html, file = "Graficos-tablas/tabla_indrural.html")
+
+# Gráfico comparativo 
+grafico_indrural <- datoscede_mpio %>%
+  mutate(Grupo = ifelse(pdet == 1, "PDET", "No PDET")) %>%
+  ggplot(aes(x = Grupo, y = indrural, fill = Grupo)) +
+  geom_boxplot(alpha = 0.7, width = 0.6) +
+  scale_fill_manual(values = c("skyblue", "seagreen3")) +
+  labs(
+    title = "Distribución del índice de ruralidad por grupo PDET",
+    x = "",
+    y = "Índice de ruralidad"
+  ) +
+  theme_minimal(base_family = "Cambria") +
+  theme(legend.position = "none")
+
+# Guardar gráfico
+ggsave("Graficos-tablas/grafico_indrural.png", grafico_indrural, width = 7, height = 5, dpi = 300)
 
 ```
+
+
 
 ## Paso 3. Modelos DiD
 
