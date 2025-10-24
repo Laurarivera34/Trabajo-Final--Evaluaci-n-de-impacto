@@ -275,7 +275,7 @@ g_sisben_proporcion <- datos_sisben %>%
 
 print(g_sisben_proporcion)
 ggsave(
-  filename = "Graficos/g_sisben_proporcion_final.png", 
+  filename = "Graficos-tablas/g_sisben_proporcion_final.png", 
   plot = g_sisben_proporcion,                       
   width = 10,                                       
   height = 7,                                        
@@ -323,7 +323,7 @@ g_discapital_pdet <- datos_discapital %>%
 
 print(g_discapital_pdet)
 ggsave(
-  filename = "Graficos/g_discapital_pdet.png", 
+  filename = "Graficos-tablas/g_discapital_pdet.png", 
   plot = g_discapital_pdet,                       
   width = 10,                                       
   height = 7,                                        
@@ -387,7 +387,7 @@ tabla_html <- tabla_aer %>%
   kable_classic(full_width = FALSE, html_font = "Cambria")
 
 # guardar 
-save_kable(tabla_html, "graficos-tablas/tabla_estadisticas_pdet.html")
+save_kable(tabla_html, "Graficos-tablas/tabla_estadisticas_pdet.html")
 
 # análisis univariado
 grafico_pdet <- datoscede %>%
@@ -404,7 +404,7 @@ grafico_pdet <- datoscede %>%
   theme_minimal()
 
 # Guardar el gráfico
-ggsave("graficos-tablas/grafico_boxplot_pdet.png", grafico_pdet, width = 10, height = 7, dpi = 300)
+ggsave("Graficos-tablas/grafico_boxplot_pdet.png", grafico_pdet, width = 10, height = 7, dpi = 300)
 
 # Tabla de estadísticas descriptivas de homicidios por grupo PDET
 tabla_homicidios <- datoscede %>%
