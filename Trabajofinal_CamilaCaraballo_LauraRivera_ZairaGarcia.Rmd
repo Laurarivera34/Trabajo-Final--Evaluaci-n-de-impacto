@@ -23,7 +23,6 @@ tinytex::tlmgr_update(self = TRUE, all = TRUE)
 if (!requireNamespace("tinytex", quietly = TRUE)) {
   install.packages("tinytex")
 }
-
 # Verificar si TinyTeX está instalado
 if (tinytex::is_tinytex()) {
   message("TinyTeX detectado. Actualizando instalación...")
@@ -144,12 +143,6 @@ datoscede <- datoscede%>%
     cols = c(gandina, gcaribe, gorinoquia, gpacifica, gamazonia),     names_to = "region",     values_to = "dummy_region"      
   )
 
-datoscede <- datoscede%>%
-  pivot_longer(
-    cols = c(sisben_pobl_1, sisben_pobl_2, sisben_pobl_3, sisben_pobl_4, sisben_pobl_5, sisben_pobl_6, sisben_pobl_7, sisben_pobl_8, sisben_pobl_9, sisben_pobl_10),    
-names_to = "poblacion_sisben",   
-  values_to = "dummy_sisben")
-
 # unir con mpio pdet
 mpiopdet <- mpiopdet %>%
   rename(
@@ -187,8 +180,158 @@ vars_a_eliminar <- c("extorsion", "errad_manual", "o_desap_for", "o_secuest")
 
 datoscede <- datoscede %>%
   select(-any_of(vars_a_eliminar))
+
+
+#Tabla auxiliar para graficar sisben 
+datos_sisben <- datoscede
+
+#Formato largo para el gráfico
+datos_sisben <- datos_sisben %>%
+  # 1. FILTRAR por el año correcto
+  filter(ano == 2016) %>%
+  
+  # 2. TRANSFORMAR de ANCHA a LARGA (Pivot)
+  pivot_longer(
+    cols = starts_with("sisben_pobl_"),
+    names_to = "Grupo_Edad_Num",        
+    values_to = "Poblacion"             
+  ) %>%
+  
+  # 3. LIMPIAR y ETIQUETAR (Crear categorías legibles)
+  mutate(
+    # Aseguramos que la clasificación PDET sea un factor y se llame 'Clasificacion_PDET'
+    Clasificacion_PDET = factor(pdet),
+    
+    # Mapeo de los 10 grupos de edad (AJUSTA LOS RANGOS DE EDAD SI SON DIFERENTES)
+    Grupo_Edad = case_when(
+      Grupo_Edad_Num == "sisben_pobl_1" ~ "0-9 años",
+      Grupo_Edad_Num == "sisben_pobl_2" ~ "10-19 años",
+      Grupo_Edad_Num == "sisben_pobl_3" ~ "20-29 años",
+      Grupo_Edad_Num == "sisben_pobl_4" ~ "30-39 años",
+      Grupo_Edad_Num == "sisben_pobl_5" ~ "40-49 años",
+      Grupo_Edad_Num == "sisben_pobl_6" ~ "50-59 años",
+      Grupo_Edad_Num == "sisben_pobl_7" ~ "60-69 años",
+      Grupo_Edad_Num == "sisben_pobl_8" ~ "70-79 años",
+      Grupo_Edad_Num == "sisben_pobl_9" ~ "80-89 años",
+      Grupo_Edad_Num == "sisben_pobl_10" ~ "90+ años",
+      TRUE ~ "No Clasificado"
+    )
+  ) %>%
+  # Asegurar el orden correcto de los factores para el gráfico
+  mutate(
+      Grupo_Edad = factor(Grupo_Edad, levels = unique(Grupo_Edad))
+  )
+
+#Estandarizacion de datos para comparación
+datos_sisben <- datos_sisben %>%
+  # A. Agregamos el conteo de Sisbén a nivel de Grupo_Edad y Clasificacion_PDET
+  group_by(Clasificacion_PDET, Grupo_Edad) %>%
+  summarise(
+    Total_Sisben = sum(Poblacion, na.rm = TRUE),
+    .groups = 'drop'
+  ) %>%
+  
+  # B. Normalizamos dentro de cada Clasificacion_PDET:
+  # Calculamos el % que representa cada Grupo_Edad sobre el Total_Sisben en su clasificación.
+  group_by(Clasificacion_PDET) %>%
+  mutate(
+      Proporcion_Total_Sisben = Total_Sisben / sum(Total_Sisben)
+  ) %>%
+  ungroup() %>%
+  mutate(
+      # Asegurar que el eje Y esté en el orden de los grupos de edad
+      Grupo_Edad = factor(Grupo_Edad, levels = unique(Grupo_Edad)) 
+  )
 ```
 
+```{r}
+#Grafico sisben
+
+g_sisben_proporcion <- datos_sisben %>%
+  ggplot(aes(x = Grupo_Edad, y = Proporcion_Total_Sisben, fill = Clasificacion_PDET)) +
+  
+  # Barras de conteo, posicionadas lado a lado
+  geom_bar(stat = "identity", position = position_dodge(width = 0.8)) +
+  
+  # Transformar a horizontal
+  coord_flip() +
+  
+  labs(
+    title = "Estructura de Edad de la Población Sisbén (Año 2016)",
+    subtitle = "Proporción de cada grupo sobre el Sisbén Total",
+    y = "Proporción de Población Sisbén Total",
+    x = "Grupo de Edad",
+    fill = "Municipio PDET"
+  ) +
+  
+  # Formatear el eje Y como porcentaje
+  scale_y_continuous(labels = percent) + 
+  
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    legend.position = "bottom"
+  )
+
+print(g_sisben_proporcion)
+ggsave(
+  filename = "Graficos/g_sisben_proporcion_final.png", 
+  plot = g_sisben_proporcion,                       
+  width = 10,                                       
+  height = 7,                                        
+  dpi = 300                                          
+)
+```
+
+```{r}
+# Creamos una base auxiliar para visualizar la diferencia 
+datos_discapital <- datoscede
+
+datos_discapital <- datos_discapital%>%
+  # Mantener solo una observación por municipio si la base es tipo panel
+  distinct(codmpio, .keep_all = TRUE) %>% 
+  
+  # Seleccionar solo las variables relevantes y limpiar NAs
+  select(discapital, pdet) %>%
+  filter(!is.na(discapital)) %>%
+  
+  # Asegurar que la clasificación PDET sea factor para el eje X
+  mutate(pdet_clasificacion = factor(pdet, labels = c("No PDET", "PDET")))
+
+# 2. Generación del Box Plot
+g_discapital_pdet <- datos_discapital %>%
+  ggplot(aes(x = pdet_clasificacion, y = discapital, fill = pdet_clasificacion)) +
+  
+  # Usar geom_boxplot
+  geom_boxplot(width = 0.5, alpha = 0.7) +
+  
+  # Añadir puntos de datos (jitter) para ver la densidad subyacente (opcional)
+  geom_jitter(width = 0.1, size = 0.5, alpha = 0.2, color = "gray20") +
+  
+  labs(
+    title = "Distancia lineal a la capital del departamento: Municipios PDET vs. No PDET",
+    subtitle = "Comparación de la distribución de la distancia",
+    x = NULL, # Ya se explica en el título/leyenda
+    y = "Distancia a la Capital (km)",
+    fill = "Clasificación"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold"),
+    legend.position = "none" # La leyenda es redundante si se usa el eje X para la etiqueta
+  )
+
+print(g_discapital_pdet)
+ggsave(
+  filename = "Graficos/g_discapital_pdet.png", 
+  plot = g_discapital_pdet,                       
+  width = 10,                                       
+  height = 7,                                        
+  dpi = 300                                          
+)
+```
+
+\
 
 ## Paso 2. Estadísticas descriptivas
 
@@ -295,7 +438,6 @@ tabla_html <- tabla_homicidios %>%
 save_kable(tabla_html, "Graficos-tablas/tabla_homicidios.html")
 ```
 
-
 ```{r}
 # Análisis univariado del índice de ruralidad por grupo pdet
 # Limpieza de datos 
@@ -367,8 +509,6 @@ grafico_indrural <- datoscede_mpio %>%
 ggsave("Graficos-tablas/grafico_indrural.png", grafico_indrural, width = 7, height = 5, dpi = 300)
 
 ```
-
-
 
 ## Paso 3. Modelos DiD
 
