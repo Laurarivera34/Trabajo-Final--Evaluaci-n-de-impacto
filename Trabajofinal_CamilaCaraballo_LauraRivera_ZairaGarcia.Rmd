@@ -810,6 +810,65 @@ despues <- as.data.frame(resumen_psm$sum.matched) # balance después del matchin
 
 ## Paso 5. Tendencias paralelas
 
+```{r}
+# Crear variable de tiempo relativo al tratamiento
+base_completa <- base_completa %>%
+  mutate(
+    ano_trat = 2017,                  # año en que inicia el tratamiento
+    event_time = ano - ano_trat       # tiempo relativo al inicio (años antes o después)
+  )
+
+# Modelo tipo estudio de evento (event study)
+modelo_event <- feols(
+  log1p(visitantes_extranjeros_no_residentes) ~ i(event_time, pdet, ref = -1) | codmpio + ano,
+  data = base_completa,
+  cluster = "region"  # errores agrupados por región
+)
+
+# Ver resumen del modelo
+summary(modelo_event)
+
+# Gráfico de efectos dinámicos (estudio de evento)
+iplot(
+  modelo_event,
+  ref.line = 0,
+  main = "Efectos dinámicos del PDET sobre visitantes extranjeros no residentes",
+  xlab = "Años relativos al inicio del PDET (2017)",
+  ylab = "Cambio en log de visitantes (efecto estimado)",
+  col = "steelblue",
+  ci.col = "lightblue"
+)
+
+# Extraer coeficientes e intervalos de confianza
+# Esto sirve si quieres graficar manualmente o exportar resultados
+event_df <- broom::tidy(modelo_event, conf.int = TRUE) %>%
+  filter(grepl("event_time::", term))
+
+# Limpiar nombres de las variables
+event_df <- event_df %>%
+  mutate(
+    event_time = as.numeric(gsub("event_time::", "", term)),
+    periodo = ifelse(event_time < 0, "Antes del PDET", "Después del PDET")
+  )
+
+# Gráfico manual más personalizable
+ggplot(event_df, aes(x = event_time, y = estimate)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") +
+  geom_point(size = 3, color = "steelblue") +
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0.2, color = "steelblue") +
+  geom_vline(xintercept = 0, linetype = "dotted", color = "darkred") +
+  labs(
+    title = "Efectos del PDET sobre los visitantes extranjeros no residentes",
+    subtitle = "Modelo de estudio de evento con efectos fijos y errores agrupados por región",
+    x = "Años relativos al inicio del PDET (2017)",
+    y = "Efecto estimado (en log de visitantes)",
+    caption = "Nota: Los puntos muestran los coeficientes y las líneas sus intervalos de confianza al 95%"
+  ) +
+  theme_minimal(base_size = 13)
+
+```
+
+
 ## Paso 6. Modelos DiD
 
 ```{r}
