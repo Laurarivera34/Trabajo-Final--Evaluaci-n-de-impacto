@@ -60,6 +60,7 @@ pacman::p_load(
   sandwich,     # Errores estándar robustos.
   survey,       # Análisis de encuestas complejas.
   MatchIt,      # Propensity Score Matching
+  cobalt,
   
   # C) Importación, exportación y generación de reportes
   haven,        # Lectura/escritura de Stata, SAS, SPSS.
@@ -147,10 +148,25 @@ datoscede <- datoscede %>%
   filter(ano >= 2013 & ano <= 2021)
 
 # para base larga con la variable de regiones y sisben
-datoscede <- datoscede%>%
-  pivot_longer(
-    cols = c(gandina, gcaribe, gorinoquia, gpacifica, gamazonia),     names_to = "region",     values_to = "dummy_region"      
+#datoscede <- datoscede%>%
+#  pivot_longer(
+ #   cols = c(gandina, gcaribe, gorinoquia, gpacifica, gamazonia),     names_to = "region",     values_to = "dummy_region"      
+  #)
+
+datoscede <- datoscede %>%
+  mutate(
+    region = case_when(
+      gandina == 1 ~ "Andina",
+      gcaribe == 1 ~ "Caribe",
+      gpacifica == 1 ~ "Pacífica",
+      gorinoquia == 1 ~ "Orinoquía",
+      gamazonia == 1 ~ "Amazonía",
+      TRUE ~ NA_character_
+    )
   )
+
+datoscede <- datoscede %>%
+  select(-gandina, -gcaribe, -gpacifica, -gorinoquia, -gamazonia)
 
 # unir con mpio pdet
 mpiopdet <- mpiopdet %>%
@@ -180,23 +196,6 @@ conteo_pdet <- datoscede%>%
     municipios_pdet = sum(pdet == 1, na.rm = TRUE),
     .groups = "drop"
   )
-
-
-#________________ error de regiones (revisar)
-
-# eliminar duplicados
-datoscede <- datoscede %>%
-  distinct(codmpio, ano, .keep_all = TRUE)
-
-# eliminar na
-datoscede <- datoscede %>%
-  filter(!is.na(codmpio))
-
-# verificacion de los 170 mpios PDET
-datoscede %>%
-  filter(pdet == 1) %>%
-  summarise(total_pdet = n_distinct(codmpio))
-
 
 #____________
 
@@ -710,77 +709,108 @@ base_completa <- base_completa %>%
 
 ## Paso 4. Propensity Score Matching
 ```{r}
-str(base_completa) # Conocer la base
+# Revisar la estructura inicial de la base
+str(base_completa)
 
-# Convertir variables turísticas a numéricas
+# Convertir variables turísticas a numéricas y asegurar que pdet sea 0 o 1
 base_completa <- base_completa %>%
   mutate(
     across(
-      c(llegadas_pasajeros_nacionales,
+      c(
+        llegadas_pasajeros_nacionales,
         llegadas_internacionales,
         visitantes_extranjeros_no_residentes,
         prestadores_de_servicios_turisticos_activos,
         establecimientos_de_alojamiento_y_hospedaje,
-        visitantes_pnn),
-      ~as.numeric(.)
+        visitantes_pnn
+      ),
+      ~ as.numeric(.)
     ),
-    pdet = as.factor(pdet)  
+    # asegurar que pdet sea 0 o 1
+    pdet = case_when(
+      pdet %in% c(1, "1", "PDET", "Sí", "Si") ~ 1,
+      pdet %in% c(0, "0", "No PDET", "No") ~ 0,
+      TRUE ~ 0  # por seguridad, cualquier otro valor o NA se considera no PDET
+    )
   )
-str(base_completa) # Conocer la base nuevamente
 
-# Eliminar filas que pdet tiene NA
+# Revisar estructura después de las conversiones
+str(base_completa)
+
+# Eliminar filas donde pdet está en NA (por precaución)
 base_completa <- base_completa %>%
   filter(!is.na(pdet))
 
-# Se eliminan NA
+# Eliminar filas con NA en variables clave
 base_completa <- base_completa %>%
-  filter(!if_any(c(discapital, altura, indrural, df_desemp_fisc, homicidios, 
-                   poblacion, t_establ_o, act_primarias, act_secundarias, act_terciarias),
-                 is.na))
+  filter(
+    !if_any(
+      c(
+        discapital, altura, indrural, df_desemp_fisc, homicidios,
+        poblacion, t_establ_o, act_primarias, act_secundarias, act_terciarias
+      ),
+      is.na
+    )
+  )
 
-# Seleccionar solo las variables necesarias de la base original
-vars_cov <- c("pdet", "discapital", "region", "homicidios",
-              "t_establ_o", "df_desemp_fisc", "indrural", "altura", 
-              "poblacion", "act_primarias", "act_secundarias", "act_terciarias")
+# Seleccionar solo las variables necesarias
+vars_cov <- c(
+  "pdet", "discapital", "region", "homicidios",
+  "t_establ_o", "df_desemp_fisc", "indrural", "altura",
+  "poblacion", "act_primarias", "act_secundarias", "act_terciarias"
+)
 
 base_cov <- base_completa[, vars_cov]
 
 # Asegurar tipos correctos
 base_cov <- base_cov %>%
   mutate(
-    pdet = as.numeric(pdet),
-    region = as.factor(region),
+    pdet = as.numeric(pdet),        # numérica 0/1
+    region = as.factor(region),     # factor categórico
     discapital = as.numeric(discapital)
   )
 
-
-# Ejecutar el PSM por región
-resultados_psm <- lapply(split(base_cov, base_cov$region), function(df) {
-  if (length(unique(df$pdet)) == 2) {
-    matchit(
-      pdet ~ discapital + altura + indrural + df_desemp_fisc + homicidios +
-        poblacion + t_establ_o + act_primarias + act_secundarias + act_terciarias,
-      data = df,
-      method = "nearest",
-      distance = "logit"
-    )
-  } else {
-    NULL
-  }
-})
-
-# Quitar regiones sin emparejamiento
-resultados_psm <- resultados_psm[!sapply(resultados_psm, is.null)]
-
-# Ver resumen del primer resultado
-summary(resultados_psm[[1]])
-
-# Revisar los valores únicos de pdet
+# Verificar que pdet solo tenga 0 y 1
+table(base_cov$pdet)
 unique(base_cov$pdet)
+
+# Ejecutar el PSM por región con transformaciones y método "optimal"
+m_caliper <- matchit(
+  formula = pdet ~ log1p(poblacion) + log1p(homicidios) + log1p(t_establ_o) +
+    indrural + df_desemp_fisc + discapital + act_primarias +
+    act_secundarias + act_terciarias,
+  data = base_cov,
+  method = "nearest",     # emparejamiento por vecino más cercano
+  distance = "logit",     # estima el propensity score mediante regresión logística
+  caliper = 0.15,          # límite máximo permitido de diferencia en el propensity score
+  replace = FALSE          # permite reutilizar controles si no hay suficientes
+)
+
+# Verificar el balance gráficamente (si tienes cobalt)
+love.plot(m_caliper, threshold = 0.1, abs = TRUE)
+
+# Extraer los datos emparejados
+matched_data <- match.data(m_caliper)
+
+# Verificar distribución después del matching
+table(matched_data$pdet)
+```
+
+
+
+```{r}
+# Revisar si quedó bien el matching
+resumen_psm <- summary(resultados_psm[[1]], standardize = TRUE, un = TRUE)
+
+# Extraer los resúmenes antes y después del matching correctamente
+antes <- as.data.frame(resumen_psm$sum.all)      # balance antes del matching
+despues <- as.data.frame(resumen_psm$sum.matched) # balance después del matching
 
 ```
 
-## Paso 5. Modelos DiD
+## Paso 5. Tendencias paralelas
+
+## Paso 6. Modelos DiD
 
 ```{r}
 
