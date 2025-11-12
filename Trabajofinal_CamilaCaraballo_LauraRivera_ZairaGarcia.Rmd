@@ -709,7 +709,9 @@ base_completa <- base_completa %>%
 ## Paso 3.1 Estadísticas Descriptivas con la base completa
 (zai)
 
-## Paso 4. Propensity Score Matching
+## Paso 4. Modelo empírico 
+
+## Paso 4.1 Propensity Score Matching
 ```{r}
 # Revisar la estructura inicial de la base
 str(base_completa)
@@ -878,7 +880,7 @@ nrow(datos_emparejados)
 ```
 
 
-## Paso 5. Tendencias paralelas
+## Paso 4.2 Tendencias paralelas
 
 ```{r}
 # Crear el año del programa
@@ -921,7 +923,7 @@ dev.off()
 ```
 
 
-## Paso 6. Modelos DiD
+## Paso 4.3. Modelos DiD
 
 ```{r}
 # Se escoge el año de programa
@@ -989,3 +991,10 @@ stargazer(
 
 )
 ```
+
+## Paso 5. Modelo empírico (efectos heterogeneos)
+(zaira)
+## Paso 5.1 Propensity Score Matching
+## Paso 5.2 Tendencias paralelas
+## Paso 5.3 Modelos DiD
+
