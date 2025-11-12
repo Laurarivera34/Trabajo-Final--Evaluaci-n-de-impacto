@@ -61,6 +61,7 @@ pacman::p_load(
   survey,       # Análisis de encuestas complejas.
   MatchIt,      # Propensity Score Matching
   cobalt,
+  lfe,
   
   # C) Importación, exportación y generación de reportes
   haven,        # Lectura/escritura de Stata, SAS, SPSS.
@@ -358,7 +359,7 @@ ggsave(
 
 \
 
-## Paso 2. Estadísticas Descriptivas inicial
+## Paso 1.1 Estadísticas Descriptivas inicial
 
 ```{r}
 # estadísticas descriptivas por grupo PDET
@@ -535,7 +536,7 @@ ggsave("Graficos-tablas/grafico_indrural.png", grafico_indrural, width = 7, heig
 
 ```
 
-## Paso 2.1 Construcción base completa con turismo
+## Paso 3 Construcción base completa con turismo
 
 ```{r}
 # Anexo de variables con información de poblacion y valor agregado
@@ -705,7 +706,8 @@ base_completa <- base_completa %>%
   ))
 ```
 
-## Paso 3. Estadísticas Descriptivas con la base completa
+## Paso 3.1 Estadísticas Descriptivas con la base completa
+(zai)
 
 ## Paso 4. Propensity Score Matching
 ```{r}
@@ -726,18 +728,17 @@ base_completa <- base_completa %>%
       ),
       ~ as.numeric(.)
     ),
-    # asegurar que pdet sea 0 o 1
     pdet = case_when(
       pdet %in% c(1, "1", "PDET", "Sí", "Si") ~ 1,
       pdet %in% c(0, "0", "No PDET", "No") ~ 0,
-      TRUE ~ 0  # por seguridad, cualquier otro valor o NA se considera no PDET
+      TRUE ~ 0  
     )
   )
 
 # Revisar estructura después de las conversiones
 str(base_completa)
 
-# Eliminar filas donde pdet está en NA (por precaución)
+# Eliminar filas donde pdet está en NA 
 base_completa <- base_completa %>%
   filter(!is.na(pdet))
 
@@ -753,40 +754,31 @@ base_completa <- base_completa %>%
     )
   )
 
-# Seleccionar solo las variables necesarias
-vars_cov <- c(
-  "pdet", "discapital", "region", "homicidios",
-  "t_establ_o", "df_desemp_fisc", "indrural", "altura",
-  "poblacion", "act_primarias", "act_secundarias", "act_terciarias"
-)
 
-base_cov <- base_completa[, vars_cov]
-
-# Asegurar tipos correctos
-base_cov <- base_cov %>%
-  mutate(
-    pdet = as.numeric(pdet),        # numérica 0/1
-    region = as.factor(region),     # factor categórico
-    discapital = as.numeric(discapital)
-  )
-
+base_completa <- base_completa %>%
+ mutate(
+ pdet = as.numeric(pdet),
+ region = as.factor(region),
+    codmpio = as.factor(codmpio),
+    ano = as.factor(ano) 
+ )
 # Verificar que pdet solo tenga 0 y 1
-table(base_cov$pdet)
-unique(base_cov$pdet)
+table(base_completa$pdet)
+unique(base_completa$pdet)
 
 # Ejecutar el PSM por región con transformaciones y método "optimal"
 m_caliper <- matchit(
   formula = pdet ~ log1p(poblacion) + log1p(homicidios) + log1p(t_establ_o) +
     indrural + df_desemp_fisc + discapital + act_primarias +
     act_secundarias + act_terciarias,
-  data = base_cov,
+  data = base_completa,
   method = "nearest",     # emparejamiento por vecino más cercano
   distance = "logit",     # estima el propensity score mediante regresión logística
   caliper = 0.15,          # límite máximo permitido de diferencia en el propensity score
-  replace = FALSE          # permite reutilizar controles si no hay suficientes
+  replace = FALSE          
 )
 
-# Verificar el balance gráficamente (si tienes cobalt)
+# Verificar el balance gráficamente 
 love.plot(m_caliper, threshold = 0.1, abs = TRUE)
 
 # Extraer los datos emparejados
@@ -794,77 +786,137 @@ matched_data <- match.data(m_caliper)
 
 # Verificar distribución después del matching
 table(matched_data$pdet)
-```
 
-
-
-```{r}
 # Revisar si quedó bien el matching
-resumen_psm <- summary(resultados_psm[[1]], standardize = TRUE, un = TRUE)
+resumen_psm <- summary(m_caliper, standardize = TRUE)
 
-# Extraer los resúmenes antes y después del matching correctamente
-antes <- as.data.frame(resumen_psm$sum.all)      # balance antes del matching
-despues <- as.data.frame(resumen_psm$sum.matched) # balance después del matching
+# Extraer balances antes y después del matching
+antes <- as.data.frame(resumen_psm$sum.all)      # Balance antes del matching
+despues <- as.data.frame(resumen_psm$sum.matched) # Balance después del matching
+
+# Comparar reducción del sesgo estandarizado
+comparacion_sesgo <- data.frame(
+  Variable = rownames(antes),
+  Sesgo_Antes = antes$`Std. Mean Diff.`,
+  Sesgo_Despues = despues$`Std. Mean Diff.`
+)
+
+# Visualizar diferencias
+print(comparacion_sesgo)
+
+# Promedio del sesgo antes y después (para verificar mejora)
+mean(abs(comparacion_sesgo$Sesgo_Antes), na.rm = TRUE)
+mean(abs(comparacion_sesgo$Sesgo_Despues), na.rm = TRUE)
+
+# guardar
+tabla_balance <- stargazer(
+  comparacion_sesgo,
+  summary = FALSE,         
+  rownames = FALSE,        
+  type = "html",          
+  title = "Balance de Covariables Antes y Después del Matching",
+  covariate.labels = c("Variable", "Sesgo Antes", "Sesgo Después"),
+  digits = 3,              
+  out = "Graficos-tablas/balance_matching_AER.html", 
+  no.space = TRUE,         
+  header = FALSE,          
+  align = TRUE,
+  table.layout = "=ldc-t-", 
+  font.size = "footnotesize"
+)
+
+# Para ver la tabla en la consola, puedes usar:
+stargazer(comparacion_sesgo, summary = FALSE, rownames = FALSE, type = "html")
+
+# Gráfico de PSM
+grafico_sesgo <- ggplot(comparacion_sesgo, 
+                        aes(x = reorder(Variable, Sesgo_Antes))) +
+  geom_point(aes(y = Sesgo_Antes, color = "Antes"), size = 3, alpha = 0.8) +
+  geom_point(aes(y = Sesgo_Despues, color = "Después"), size = 3, alpha = 0.8) +
+  geom_hline(yintercept = c(-0.1, 0.1), linetype = "dashed", color = "gray40") +
+  coord_flip() +
+  labs(
+    title = "Comparación del Sesgo Estandarizado Antes y Después del Matching",
+    x = NULL,
+    y = "Sesgo Estandarizado",
+    color = NULL
+  ) +
+  scale_color_manual(values = c("Antes" = "#B22222", "Después" = "#1E90FF")) +
+  theme_minimal(base_family = "serif", base_size = 13) +
+  theme(
+    plot.title = element_text(face = "bold", size = 14, hjust = 0.5),
+    axis.text = element_text(color = "black"),
+    legend.position = "top",
+    legend.justification = "center",
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_line(color = "gray85")
+  )
+
+# Mostrar el gráfico
+grafico_sesgo
+
+# Guardar 
+ggsave("Graficos-tablas/comparacion_sesgo_AER.png", grafico_sesgo, 
+       width = 8, height = 6, dpi = 300)
+
+png("Graficos-tablas/hist_matching_caliper.png", width = 1200, height = 800, res = 150)
+
+plot(m_caliper, type = "hist")
+dev.off()
+
+# Para ver las observaciones que hicieron matching
+datos_emparejados <- match.data(m_caliper)
+
+# Visualiza las primeras filas y su estructura para confirmar
+head(datos_emparejados)
+str(datos_emparejados)
+
+# El número de filas será la muestra reducida y emparejada
+nrow(datos_emparejados)
 
 ```
+
 
 ## Paso 5. Tendencias paralelas
 
 ```{r}
-# Crear variable de tiempo relativo al tratamiento
-base_completa <- base_completa %>%
+# Crear el año del programa
+datos_emparejados <- datos_emparejados %>%
   mutate(
-    ano_trat = 2017,                  # año en que inicia el tratamiento
-    event_time = ano - ano_trat       # tiempo relativo al inicio (años antes o después)
+    ano = as.numeric(as.character(ano)),  # asegurar que sea numérica
+    event_time = ano - 2017
   )
 
-# Modelo tipo estudio de evento (event study)
-modelo_event <- feols(
+table(datos_emparejados$event_time)
+
+# Modelo 
+modelo_evento <- feols(
   log1p(visitantes_extranjeros_no_residentes) ~ i(event_time, pdet, ref = -1) | codmpio + ano,
-  data = base_completa,
-  cluster = "region"  # errores agrupados por región
+  cluster = ~region,
+  data = datos_emparejados
 )
 
-# Ver resumen del modelo
-summary(modelo_event)
+# Guadar gráfico
+png("Graficos-tablas/fig_event_study_PDET.png", width = 900, height = 600, res = 150)
 
-# Gráfico de efectos dinámicos (estudio de evento)
 iplot(
-  modelo_event,
+  modelo_evento,
   ref.line = 0,
-  main = "Efectos dinámicos del PDET sobre visitantes extranjeros no residentes",
-  xlab = "Años relativos al inicio del PDET (2017)",
-  ylab = "Cambio en log de visitantes (efecto estimado)",
-  col = "steelblue",
-  ci.col = "lightblue"
+  main = "Tendencias Paralelas PDET sobre el turismo internacional",
+  xlab = "Tiempo",
+  ylab = "Visitantes extranjeros no residentes",
+  col = "black",
+  ci.col = "grey60",
+  lwd = 2,
+  ci.lwd = 1.2,
+  grid = FALSE
 )
 
-# Extraer coeficientes e intervalos de confianza
-# Esto sirve si quieres graficar manualmente o exportar resultados
-event_df <- broom::tidy(modelo_event, conf.int = TRUE) %>%
-  filter(grepl("event_time::", term))
+abline(v = 0, lty = 2, col = "darkred")   # línea vertical en el evento
+abline(h = 0, lty = 1, col = "gray40")    # línea horizontal en cero
+dev.off()
 
-# Limpiar nombres de las variables
-event_df <- event_df %>%
-  mutate(
-    event_time = as.numeric(gsub("event_time::", "", term)),
-    periodo = ifelse(event_time < 0, "Antes del PDET", "Después del PDET")
-  )
-
-# Gráfico manual más personalizable
-ggplot(event_df, aes(x = event_time, y = estimate)) +
-  geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") +
-  geom_point(size = 3, color = "steelblue") +
-  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0.2, color = "steelblue") +
-  geom_vline(xintercept = 0, linetype = "dotted", color = "darkred") +
-  labs(
-    title = "Efectos del PDET sobre los visitantes extranjeros no residentes",
-    subtitle = "Modelo de estudio de evento con efectos fijos y errores agrupados por región",
-    x = "Años relativos al inicio del PDET (2017)",
-    y = "Efecto estimado (en log de visitantes)",
-    caption = "Nota: Los puntos muestran los coeficientes y las líneas sus intervalos de confianza al 95%"
-  ) +
-  theme_minimal(base_size = 13)
 
 ```
 
@@ -872,6 +924,68 @@ ggplot(event_df, aes(x = event_time, y = estimate)) +
 ## Paso 6. Modelos DiD
 
 ```{r}
+# Se escoge el año de programa
+datos_emparejados <- datos_emparejados %>%
+  mutate(
+    post = as.numeric(ano >= 2017) # 1 si el año es 2017 o posterior, 0 si es anterior
+  )
 
+# Modelo sin controles
+modelo_did_psm <- felm(
+ log1p(visitantes_extranjeros_no_residentes) ~ pdet * post
+  | codmpio + ano 
+  | 0 
+  | region,
+ data = datos_emparejados
+)
 
+# Modelo 2 con controles
+modelo_did_psm_control <- felm(
+ log1p(visitantes_extranjeros_no_residentes) ~ pdet * post +
+  log1p(poblacion) +
+  log1p(homicidios) +
+  log1p(t_establ_o) +
+  df_desemp_fisc +
+  act_primarias +
+  act_secundarias +
+  act_terciarias
+  | codmpio + ano 
+  | 0 
+  | region,
+ data = datos_emparejados
+)
+
+stargazer(
+ modelo_did_psm,
+ modelo_did_psm_control,
+ title = "Impacto del PDET (DiD con PSM): Comparación de Modelos",
+ out = "Graficos-tablas/modelo_did_psm_comparativa.html",
+ type = "html",
+ 
+ # Ajuste de etiquetas 
+ covariate.labels = c(
+  "Tratamiento (PDET)",              
+  "Post-Tratamiento (Post 2017)",    
+  "PDET $\\times$ Post (ATT)",       
+  "Población (Log)",
+  "Homicidios (Log)",
+  "Establecimientos (Log)",
+  "Desempeño Fiscal",
+  "Act. Primarias",
+  "Act. Secundarias",
+  "Act. Terciarias"
+ ),
+ dep.var.labels = "Log(1+Visitantes Extranjeros)",
+ 
+ # Añadir filas para las estadísticas y los Efectos Fijos
+ add.lines = list(
+  c("Efectos Fijos de Municipio", "Sí", "Sí"),
+  c("Efectos Fijos de Año", "Sí", "Sí"),
+  c("Errores Estándar Agrupados", "Región", "Región")
+ ),
+ 
+ # Etiquetas de columnas
+ column.labels = c("Sin Controles", "Con Controles")
+
+)
 ```
