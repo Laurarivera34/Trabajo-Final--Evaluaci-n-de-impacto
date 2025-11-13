@@ -992,9 +992,164 @@ stargazer(
 )
 ```
 
+## Paso 4.4 Pruebas de robustez
+
+```{r}
+
+# Fórmula del PSM 
+psm_formula <- pdet ~ log1p(poblacion) + log1p(homicidios) + log1p(t_establ_o) +
+  indrural + df_desemp_fisc + act_primarias + act_secundarias + act_terciarias
+
+# Matching con Caliper 0.15 
+m_caliper_base <- matchit(
+  formula = psm_formula,
+  data = base_completa,
+  method = "nearest",
+  distance = "logit",
+  caliper = 0.15,
+  replace = FALSE
+)
+
+# Matching con Caliper 0.10 
+m_caliper_estricto <- matchit(
+  formula = psm_formula,
+  data = base_completa,
+  method = "nearest",
+  distance = "logit",
+  caliper = 0.10,
+  replace = FALSE
+)
+
+# Tablas de balance separadas 
+balance_base <- bal.tab(m_caliper_base, stats = "mean.diffs", disp.smd = TRUE)
+balance_estricto <- bal.tab(m_caliper_estricto, stats = "mean.diffs", disp.smd = TRUE)
+
+#  Mostrar los resultados 
+print(balance_base)
+print(balance_estricto)
+
+# Convertir a data.frame
+tab_base <- as.data.frame(balance_base$Balance) %>%
+  dplyr::select(Type, Diff.Adj) %>%
+  rename(Diff_Adj_0.15 = Diff.Adj)
+
+tab_estricto <- as.data.frame(balance_estricto$Balance) %>%
+  dplyr::select(Diff.Adj) %>%
+  rename(Diff_Adj_0.10 = Diff.Adj)
+
+# Combinar por fila (asegurando el mismo orden)
+tabla_comparada <- bind_cols(tab_base, tab_estricto) %>%
+  mutate(Dif_abs = abs(Diff_Adj_0.10) - abs(Diff_Adj_0.15))
+
+# Exportar como HTML
+tabla_comparada %>%
+  kbl(caption = "Comparación de balance entre calipers 0.15 y 0.10",
+      digits = 4, align = "c") %>%
+  kable_paper("hover", full_width = FALSE) %>%
+  save_kable("Graficos-tablas/balance_comparado.html")
+
+# Vector con nombres claros
+# Vector de nombres claros
+nombres_claros <- c(
+  "distance" = "Puntaje de Propensión (Distance)",
+  "log1p(poblacion)" = "Log(Población)",
+  "log1p(homicidios)" = "Log(Homicidios)",
+  "log1p(t_establ_o)" = "Log(Establecimientos Totales)",
+  "indrural" = "Índice de Ruralidad",
+  "df_desemp_fisc" = "Déficit Fiscal / Desempleo",
+  "act_primarias" = "Actividad Primaria (%)",
+  "act_secundarias" = "Actividad Secundaria (%)",
+  "act_terciarias" = "Actividad Terciaria (%)"
+)
+
+# Asegurarse de que no haya columnas extra
+tabla_comparada_limpia <- tabla_comparada %>%
+  mutate(Variable = rownames(tab_base)) %>%
+  mutate(Variable = ifelse(Variable %in% names(nombres_claros),
+                           nombres_claros[Variable], Variable)) %>%
+  select(Variable, Type, Diff_Adj_0.15, Diff_Adj_0.10, Dif_abs) %>%
+  distinct()  # eliminar duplicados o columnas ocultas
+
+# Revisar número de columnas
+print(colnames(tabla_comparada_limpia))
+
+# Generar la tabla HTML
+tabla_comparada_limpia %>%
+  kbl(
+    caption = "Comparación de balance entre calipers 0.15 y 0.10 (valores después del emparejamiento)",
+    digits = 4, align = "c", booktabs = TRUE
+  ) %>%
+  kable_paper("hover", full_width = FALSE) %>%
+  # Ajuste de encabezado: 5 columnas exactas
+  add_header_above(c(" " = 2, "Diferencias Estandarizadas de Medias" = 2, " " = 1)) %>%
+  save_kable("Graficos-tablas/balance_comparado_nombres.html")
+```
+
+```{r}
+# Prueba placebo
+datos_emparejados <- datos_emparejados %>%
+  mutate(
+    # Variable post real (para el modelo base)
+    post_real = as.numeric(ano >= 2017), 
+    
+    # Variable post placebo (asume que el tratamiento inició en 2015)
+    post_placebo = as.numeric(ano >= 2015)
+  )
+
+#Se corre el modelo con el post placebo 
+modelo_placebo <- felm(
+  log1p(visitantes_extranjeros_no_residentes) ~ pdet * post_placebo + 
+    # Incluir las mismas covariables que varian en el tiempo:
+    log1p(poblacion) + log1p(homicidios) + log1p(t_establ_o) +
+    df_desemp_fisc + act_primarias + act_secundarias + act_terciarias
+    | codmpio + ano # Efectos Fijos
+    | 0 
+    | region, # Errores Agrupados
+  data = datos_emparejados
+)
+
+# 1. Extraer los coeficientes de las interacciones clave
+coef_real <- coef(modelo_did_psm_control)["pdet:post"]
+se_real <- se(modelo_did_psm_control)["pdet:post"]
+
+# Extraer el coeficiente de placebo (La interacción clave en el modelo placebo)
+coef_placebo <- coef(modelo_placebo)["pdet:post_placebo"]
+se_placebo <- se(modelo_placebo)["pdet:post_placebo"]
+
+
+# 2. Generar tabla con Stargazer (Omitiendo la mayoría de los coeficientes)
+stargazer(
+    modelo_did_psm_control, 
+    modelo_placebo,
+    title = "Prueba de Placebo: Falsificación del Inicio del Tratamiento",
+    type = "html",
+    out = "Graficos-tablas/prueba_placebo_final.html", # <--- Asegura la ruta y el nombre
+    
+    # Usar las mismas opciones de keep y omit.stat
+    keep = c("pdet", "post", "poblacion", "homicidios", "t_establ_o", 
+             "df_desemp_fisc", "act_primarias", "act_secundarias", "act_terciarias", 
+             "post_placebo"),
+    omit.stat = c("f", "ser", "rsq"), 
+    
+    add.lines = list(
+        c("Efecto ATT (pdet:post_real)", "Coeficiente en M1", "No Aplica"),
+        c("Efecto Placebo (pdet:post_placebo)", "No Aplica", "Coeficiente en M2"),
+        c("Efectos Fijos de Municipio", "Sí", "Sí"),
+        c("Efectos Fijos de Año", "Sí", "Sí")
+    ),
+    
+    column.labels = c("Modelo Base", "Modelo Placebo"),
+    header = FALSE,
+    no.space = TRUE
+)
+```
+
+
+
 ## Paso 5. Modelo empírico (efectos heterogeneos)
 (zaira)
 ## Paso 5.1 Propensity Score Matching
 ## Paso 5.2 Tendencias paralelas
 ## Paso 5.3 Modelos DiD
+## Paso 5.4 Pruebas de robustez
 
