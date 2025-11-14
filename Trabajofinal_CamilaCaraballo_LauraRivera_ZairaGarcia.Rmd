@@ -87,7 +87,6 @@ turismo <- read_excel("Datos/turismo.xlsx")
 
 ## Paso 1. Limpieza de datos
 
-
 ```{r}
 # estandarizar nombres de variables
 salud_servicios <- salud_servicios %>% clean_names()
@@ -707,11 +706,15 @@ base_completa <- base_completa %>%
 ```
 
 ## Paso 3.1 Estadísticas Descriptivas con la base completa
-(zai)
 
-## Paso 4. Modelo empírico 
+```{r}
+# to do
+```
+
+## Paso 4. Modelo empírico
 
 ## Paso 4.1 Propensity Score Matching
+
 ```{r}
 # Revisar la estructura inicial de la base
 str(base_completa)
@@ -879,7 +882,6 @@ nrow(datos_emparejados)
 
 ```
 
-
 ## Paso 4.2 Tendencias paralelas
 
 ```{r}
@@ -921,7 +923,6 @@ dev.off()
 
 
 ```
-
 
 ## Paso 4.3. Modelos DiD
 
@@ -1144,12 +1145,30 @@ stargazer(
 )
 ```
 
-
-
 ## Paso 5. Modelo empírico (efectos heterogeneos)
-(zaira)
+
+(zaira) \## Paso 5.1 Propensity Score Matching \## Paso 5.2 Tendencias paralelas \## Paso 5.3 Modelos DiD \## Paso 5.4 Pruebas de robustez
+
 ## Paso 5.1 Propensity Score Matching
+
+```{r}
+
+```
+
 ## Paso 5.2 Tendencias paralelas
-## Paso 5.3 Modelos DiD
+
+```{r}
+
+```
+
+## Paso 5.3 Modelo DiD 
+
+```{r}
+
+```
+
 ## Paso 5.4 Pruebas de robustez
 
+```{r}
+
+```
