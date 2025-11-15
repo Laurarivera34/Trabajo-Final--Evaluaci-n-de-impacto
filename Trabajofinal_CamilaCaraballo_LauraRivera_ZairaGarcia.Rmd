@@ -907,7 +907,7 @@ png("Graficos-tablas/fig_event_study_PDET.png", width = 900, height = 600, res =
 iplot(
   modelo_evento,
   ref.line = 0,
-  main = "Tendencias Paralelas PDET sobre el turismo internacional",
+  main = "Tendencias Paralelas PDET sobre el turismo",
   xlab = "Tiempo",
   ylab = "Visitantes extranjeros no residentes",
   col = "black",
@@ -1029,28 +1029,25 @@ balance_estricto <- bal.tab(m_caliper_estricto, stats = "mean.diffs", disp.smd =
 print(balance_base)
 print(balance_estricto)
 
-# Convertir a data.frame
+# Guardar resultados
+
+# Extraer balance base
 tab_base <- as.data.frame(balance_base$Balance) %>%
-  dplyr::select(Type, Diff.Adj) %>%
+  tibble::rownames_to_column(var = "Variable") %>%
+  dplyr::select(Variable, Type, Diff.Adj) %>%
   rename(Diff_Adj_0.15 = Diff.Adj)
 
+# Extraer balance estricto
 tab_estricto <- as.data.frame(balance_estricto$Balance) %>%
-  dplyr::select(Diff.Adj) %>%
+  tibble::rownames_to_column(var = "Variable") %>%
+  dplyr::select(Variable, Diff.Adj) %>%
   rename(Diff_Adj_0.10 = Diff.Adj)
 
-# Combinar por fila (asegurando el mismo orden)
-tabla_comparada <- bind_cols(tab_base, tab_estricto) %>%
+# Unir (join) 
+tabla_comparada <- dplyr::left_join(tab_base, tab_estricto, by = "Variable") %>%
   mutate(Dif_abs = abs(Diff_Adj_0.10) - abs(Diff_Adj_0.15))
 
-# Exportar como HTML
-tabla_comparada %>%
-  kbl(caption = "Comparación de balance entre calipers 0.15 y 0.10",
-      digits = 4, align = "c") %>%
-  kable_paper("hover", full_width = FALSE) %>%
-  save_kable("Graficos-tablas/balance_comparado.html")
-
-# Vector con nombres claros
-# Vector de nombres claros
+# Vector de nombres claros 
 nombres_claros <- c(
   "distance" = "Puntaje de Propensión (Distance)",
   "log1p(poblacion)" = "Log(Población)",
@@ -1063,27 +1060,26 @@ nombres_claros <- c(
   "act_terciarias" = "Actividad Terciaria (%)"
 )
 
-# Asegurarse de que no haya columnas extra
+# Limpiar y renombrar 
 tabla_comparada_limpia <- tabla_comparada %>%
-  mutate(Variable = rownames(tab_base)) %>%
-  mutate(Variable = ifelse(Variable %in% names(nombres_claros),
-                           nombres_claros[Variable], Variable)) %>%
+  mutate(Variable = dplyr::recode(Variable, !!!nombres_claros)) %>%
   select(Variable, Type, Diff_Adj_0.15, Diff_Adj_0.10, Dif_abs) %>%
-  distinct()  # eliminar duplicados o columnas ocultas
+  distinct()
 
-# Revisar número de columnas
-print(colnames(tabla_comparada_limpia))
-
-# Generar la tabla HTML
+# Generar tabla HTML 
 tabla_comparada_limpia %>%
   kbl(
-    caption = "Comparación de balance entre calipers 0.15 y 0.10 (valores después del emparejamiento)",
-    digits = 4, align = "c", booktabs = TRUE
+    caption = "Comparación de balance entre calipers 0.15 y 0.10",
+    digits = 4, align = "c", booktabs = TRUE,
+    col.names = c("Variable", "Tipo", "Caliper 0.15", "Caliper 0.10", "Diferencia Abs")
   ) %>%
   kable_paper("hover", full_width = FALSE) %>%
-  # Ajuste de encabezado: 5 columnas exactas
   add_header_above(c(" " = 2, "Diferencias Estandarizadas de Medias" = 2, " " = 1)) %>%
-  save_kable("Graficos-tablas/balance_comparado_nombres.html")
+  save_kable("Graficos-tablas/balance_comparados.html")
+
+print("Archivo 'balance_comparado_nombres.html' guardado con éxito.")
+
+
 ```
 
 ```{r}

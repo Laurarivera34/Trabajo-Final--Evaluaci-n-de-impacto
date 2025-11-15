@@ -280,70 +280,85 @@ border: 0;
 
 </head>
 <body>
-<table class=" lightable-classic" style="font-family: Arial; width: auto !important; margin-left: auto; margin-right: auto;">
-<caption>Balance de covariables - Caliper 0.10</caption>
+<table class=" lightable-paper lightable-hover" style="font-family: &quot;Arial Narrow&quot;, arial, helvetica, sans-serif; width: auto !important; margin-left: auto; margin-right: auto;">
+<caption>Comparación de balance entre calipers 0.15 y 0.10</caption>
  <thead>
+<tr>
+<th style="empty-cells: hide;" colspan="2"></th>
+<th style="padding-bottom:0; padding-left:3px;padding-right:3px;text-align: center; " colspan="2"><div style="TRUE">Diferencias Estandarizadas de Medias</div></th>
+<th style="empty-cells: hide;" colspan="1"></th>
+</tr>
   <tr>
-   <th style="text-align:left;">   </th>
-   <th style="text-align:left;"> Type </th>
-   <th style="text-align:right;"> Diff.Un </th>
-   <th style="text-align:right;"> Diff.Adj </th>
+   <th style="text-align:center;"> Variable </th>
+   <th style="text-align:center;"> Tipo </th>
+   <th style="text-align:center;"> Caliper 0.15 </th>
+   <th style="text-align:center;"> Caliper 0.10 </th>
+   <th style="text-align:center;"> Diferencia Abs </th>
   </tr>
  </thead>
 <tbody>
   <tr>
-   <td style="text-align:left;"> distance </td>
-   <td style="text-align:left;"> Distance </td>
-   <td style="text-align:right;"> NA </td>
-   <td style="text-align:right;"> 0.0247781 </td>
+   <td style="text-align:center;"> Puntaje de Propensión (Distance) </td>
+   <td style="text-align:center;"> Distance </td>
+   <td style="text-align:center;"> 0.0434 </td>
+   <td style="text-align:center;"> 0.0248 </td>
+   <td style="text-align:center;"> -0.0186 </td>
   </tr>
   <tr>
-   <td style="text-align:left;"> log1p(poblacion) </td>
-   <td style="text-align:left;"> Contin. </td>
-   <td style="text-align:right;"> NA </td>
-   <td style="text-align:right;"> -0.0006720 </td>
+   <td style="text-align:center;"> Log(Población) </td>
+   <td style="text-align:center;"> Contin. </td>
+   <td style="text-align:center;"> -0.0228 </td>
+   <td style="text-align:center;"> -0.0007 </td>
+   <td style="text-align:center;"> -0.0221 </td>
   </tr>
   <tr>
-   <td style="text-align:left;"> log1p(homicidios) </td>
-   <td style="text-align:left;"> Contin. </td>
-   <td style="text-align:right;"> NA </td>
-   <td style="text-align:right;"> 0.0194710 </td>
+   <td style="text-align:center;"> Log(Homicidios) </td>
+   <td style="text-align:center;"> Contin. </td>
+   <td style="text-align:center;"> 0.0032 </td>
+   <td style="text-align:center;"> 0.0195 </td>
+   <td style="text-align:center;"> 0.0163 </td>
   </tr>
   <tr>
-   <td style="text-align:left;"> log1p(t_establ_o) </td>
-   <td style="text-align:left;"> Contin. </td>
-   <td style="text-align:right;"> NA </td>
-   <td style="text-align:right;"> 0.0191102 </td>
+   <td style="text-align:center;"> Log(Establecimientos Totales) </td>
+   <td style="text-align:center;"> Contin. </td>
+   <td style="text-align:center;"> 0.0240 </td>
+   <td style="text-align:center;"> 0.0191 </td>
+   <td style="text-align:center;"> -0.0049 </td>
   </tr>
   <tr>
-   <td style="text-align:left;"> indrural </td>
-   <td style="text-align:left;"> Contin. </td>
-   <td style="text-align:right;"> NA </td>
-   <td style="text-align:right;"> 0.0059556 </td>
+   <td style="text-align:center;"> Índice de Ruralidad </td>
+   <td style="text-align:center;"> Contin. </td>
+   <td style="text-align:center;"> 0.0258 </td>
+   <td style="text-align:center;"> 0.0060 </td>
+   <td style="text-align:center;"> -0.0199 </td>
   </tr>
   <tr>
-   <td style="text-align:left;"> df_desemp_fisc </td>
-   <td style="text-align:left;"> Contin. </td>
-   <td style="text-align:right;"> NA </td>
-   <td style="text-align:right;"> 0.0335602 </td>
+   <td style="text-align:center;"> Déficit Fiscal / Desempleo </td>
+   <td style="text-align:center;"> Contin. </td>
+   <td style="text-align:center;"> 0.0001 </td>
+   <td style="text-align:center;"> 0.0336 </td>
+   <td style="text-align:center;"> 0.0334 </td>
   </tr>
   <tr>
-   <td style="text-align:left;"> act_primarias </td>
-   <td style="text-align:left;"> Contin. </td>
-   <td style="text-align:right;"> NA </td>
-   <td style="text-align:right;"> -0.0432347 </td>
+   <td style="text-align:center;"> Actividad Primaria (%) </td>
+   <td style="text-align:center;"> Contin. </td>
+   <td style="text-align:center;"> -0.0382 </td>
+   <td style="text-align:center;"> -0.0432 </td>
+   <td style="text-align:center;"> 0.0051 </td>
   </tr>
   <tr>
-   <td style="text-align:left;"> act_secundarias </td>
-   <td style="text-align:left;"> Contin. </td>
-   <td style="text-align:right;"> NA </td>
-   <td style="text-align:right;"> -0.0210091 </td>
+   <td style="text-align:center;"> Actividad Secundaria (%) </td>
+   <td style="text-align:center;"> Contin. </td>
+   <td style="text-align:center;"> -0.0447 </td>
+   <td style="text-align:center;"> -0.0210 </td>
+   <td style="text-align:center;"> -0.0237 </td>
   </tr>
   <tr>
-   <td style="text-align:left;"> act_terciarias </td>
-   <td style="text-align:left;"> Contin. </td>
-   <td style="text-align:right;"> NA </td>
-   <td style="text-align:right;"> -0.0014468 </td>
+   <td style="text-align:center;"> Actividad Terciaria (%) </td>
+   <td style="text-align:center;"> Contin. </td>
+   <td style="text-align:center;"> -0.0142 </td>
+   <td style="text-align:center;"> -0.0014 </td>
+   <td style="text-align:center;"> -0.0127 </td>
   </tr>
 </tbody>
 </table>
