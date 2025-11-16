@@ -949,14 +949,24 @@ modelo_did_psm_control <- felm(
   log1p(homicidios) +
   log1p(t_establ_o) +
   df_desemp_fisc +
-  act_primarias +
-  act_secundarias +
   act_terciarias
   | codmpio + ano 
   | 0 
   | region,
  data = datos_emparejados
 )
+
+#------------ Posible solución al problema de inestabilidad numérica--------------# 
+
+modelo_feols_corregido <- feols(
+    log1p(visitantes_extranjeros_no_residentes) ~ i(pdet, post, ref=0) + 
+        log1p(poblacion) + log1p(homicidios) + log1p(t_establ_o) +
+        df_desemp_fisc + act_primarias + act_secundarias + act_terciarias
+    | codmpio + ano,
+    data = datos_emparejados,
+    cluster = ~codmpio
+)
+#------------------------------------------------------------------------------#
 
 stargazer(
  modelo_did_psm,
@@ -974,8 +984,6 @@ stargazer(
   "Homicidios (Log)",
   "Establecimientos (Log)",
   "Desempeño Fiscal",
-  "Act. Primarias",
-  "Act. Secundarias",
   "Act. Terciarias"
  ),
  dep.var.labels = "Log(1+Visitantes Extranjeros)",
@@ -1096,48 +1104,53 @@ datos_emparejados <- datos_emparejados %>%
 #Se corre el modelo con el post placebo 
 modelo_placebo <- felm(
   log1p(visitantes_extranjeros_no_residentes) ~ pdet * post_placebo + 
-    # Incluir las mismas covariables que varian en el tiempo:
     log1p(poblacion) + log1p(homicidios) + log1p(t_establ_o) +
     df_desemp_fisc + act_primarias + act_secundarias + act_terciarias
-    | codmpio + ano # Efectos Fijos
+    | codmpio + ano 
     | 0 
-    | region, # Errores Agrupados
+    | region, 
   data = datos_emparejados
 )
 
-# 1. Extraer los coeficientes de las interacciones clave
-coef_real <- coef(modelo_did_psm_control)["pdet:post"]
+# M1 (Base)
+coef_real <- coef(modelo_did_psm_control)["pdet:post"] 
 se_real <- se(modelo_did_psm_control)["pdet:post"]
 
-# Extraer el coeficiente de placebo (La interacción clave en el modelo placebo)
+# M2 (Placebo)
 coef_placebo <- coef(modelo_placebo)["pdet:post_placebo"]
 se_placebo <- se(modelo_placebo)["pdet:post_placebo"]
 
 
-# 2. Generar tabla con Stargazer (Omitiendo la mayoría de los coeficientes)
+# --- Generación de Tabla con Stargazer (Con corrección de \\_ ) ---
+
 stargazer(
-    modelo_did_psm_control, 
-    modelo_placebo,
-    title = "Prueba de Placebo: Falsificación del Inicio del Tratamiento",
-    type = "html",
-    out = "Graficos-tablas/prueba_placebo_final.html", # <--- Asegura la ruta y el nombre
-    
-    # Usar las mismas opciones de keep y omit.stat
-    keep = c("pdet", "post", "poblacion", "homicidios", "t_establ_o", 
-             "df_desemp_fisc", "act_primarias", "act_secundarias", "act_terciarias", 
-             "post_placebo"),
-    omit.stat = c("f", "ser", "rsq"), 
-    
-    add.lines = list(
-        c("Efecto ATT (pdet:post_real)", "Coeficiente en M1", "No Aplica"),
-        c("Efecto Placebo (pdet:post_placebo)", "No Aplica", "Coeficiente en M2"),
-        c("Efectos Fijos de Municipio", "Sí", "Sí"),
-        c("Efectos Fijos de Año", "Sí", "Sí")
-    ),
-    
-    column.labels = c("Modelo Base", "Modelo Placebo"),
-    header = FALSE,
-    no.space = TRUE
+   modelo_did_psm_control,
+   modelo_placebo,
+   title = "Prueba de Placebo: Falsificación del Inicio del Tratamiento",
+   type = "text",
+ 
+ # Omitir todos los coeficientes del cuerpo principal
+   omit = ".*", 
+   omit.stat = c("f", "ser", "rsq"),
+ 
+ # Insertar el ATT real y el Placebo de forma manual sin estrellas
+ add.lines = list(
+ c("ATT (Efecto Real 2017)", 
+ sprintf("%.4f", coef_real), 
+ sprintf("%.4f", coef_placebo)
+ ),
+ c("Error Estándar", 
+ sprintf("(%.4f)", se_real), 
+ sprintf("(%.4f)", se_placebo)
+ ),
+ c("", "", ""),
+ c("Efectos Fijos de Municipio", "Sí", "Sí"),
+ c("Efectos Fijos de Año", "Sí", "Sí")
+ ),
+
+ column.labels = c("Modelo Base", "Modelo Placebo"),
+ header = FALSE,
+ no.space = TRUE
 )
 ```
 
@@ -1157,7 +1170,7 @@ stargazer(
 
 ```
 
-## Paso 5.3 Modelo DiD 
+## Paso 5.3 Modelo DiD
 
 ```{r}
 
