@@ -703,12 +703,152 @@ base_completa <- base_completa %>%
     where(is.character),
     ~ na_if(trimws(.), "NA")
   ))
+# Nuevas variables a numerica 
+base_completa <- base_completa %>%
+  mutate(across(
+    c(llegadas_pasajeros_nacionales,
+      llegadas_internacionales,
+      visitantes_extranjeros_no_residentes,
+      visitantes_pnn,
+      prestadores_de_servicios_turisticos_activos,
+      establecimientos_de_alojamiento_y_hospedaje),
+    as.numeric
+  ))
 ```
 
 ## Paso 3.1 Estadísticas Descriptivas con la base completa
 
 ```{r}
-# to do
+# estadísticas descriptivas 
+vars_interes_compl <- c("indrural", "discapital", "df_desemp_fisc",
+                  "homicidios", "t_establ_o", "act_primarias", 
+                  "act_secundarias", "act_terciarias",
+                  "visitantes_extranjeros_no_residentes")
+
+nombres_descriptivos_compl <- c(
+  "Porcentaje rural",
+  "Porcentaje en capital",
+  "Desempeño fiscal (%)",
+  "Número de homicidios",
+  "Establecimientos oficiales",
+  "Actividades primarias",
+  "Actividades secundarias",
+  "Actividades terciarias",
+  "Visitantes extranjeros no residentes"
+)
+
+# Crear tabla vertical con estadísticas
+tabla_aer_compl <- base_completa %>%
+  filter(pdet %in% c(0,1)) %>%
+  select(pdet, all_of(vars_interes_compl)) %>%
+  pivot_longer(
+    cols = all_of(vars_interes_compl),
+    names_to = "variable",
+    values_to = "valor"
+  ) %>%
+  group_by(pdet, variable) %>%
+  summarise(
+    Min = min(valor, na.rm = TRUE),
+    Max = max(valor, na.rm = TRUE),
+    Promedio = mean(valor, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  pivot_wider(
+    names_from = pdet,
+    values_from = c(Min, Max, Promedio),
+    names_prefix = "pdet_"
+  ) %>%
+  # Reemplazar nombres de variables por descriptivos
+  mutate(variable = nombres_descriptivos_compl)
+
+# Crear tabla AER
+tabla_html_compl <- tabla_aer_compl %>%
+  kable(
+    caption = "Estadísticas descriptivas por municipio PDET y No PDET",
+    digits = 2,
+    format = "html",
+    col.names = c(
+      "Variable",
+      "Min (No PDET)", "Max (No PDET)", "Promedio (No PDET)",
+      "Min (PDET)", "Max (PDET)", "Promedio (PDET)"
+    )
+  ) %>%
+  kable_classic(full_width = FALSE, html_font = "Cambria")
+
+# guardar 
+save_kable(tabla_html_compl, "Graficos-tablas/tabla_estadisticas_complet_pdet.html")
+
+# análisis univariado
+grafico_pdet_compl <- base_completa %>%
+  filter(pdet %in% c(0,1)) %>%
+  pivot_longer(cols = all_of(vars_interes_compl), names_to = "variable", values_to = "valor") %>%
+  mutate(variable = factor(variable, 
+                           levels = vars_interes_compl, 
+                           labels = nombres_descriptivos_compl)) %>%
+  ggplot(aes(x = factor(pdet), y = valor, fill = factor(pdet))) +
+  geom_boxplot() +
+  facet_wrap(~variable, scales = "free") +
+  scale_fill_manual(values = c("0" = "lightblue", "1" = "salmon"), labels = c("No PDET", "PDET")) +
+  labs(x = "Grupo PDET", y = "Valor", fill = "Grupo") +
+  theme_minimal()
+
+# Guardar el gráfico
+ggsave("Graficos-tablas/grafico_compl_boxplot_pdet.png", grafico_pdet_compl, width = 10, height = 7, dpi = 300)
+
+# Gráfico de Violín (Violin Plot)
+grafico_pdet_violin <- base_completa %>%
+  filter(pdet %in% c(0,1)) %>%
+  pivot_longer(cols = all_of(vars_interes_compl), names_to = "variable", values_to = "valor") %>%
+  mutate(variable = factor(variable,
+                           levels = vars_interes_compl,
+                           labels = nombres_descriptivos_compl)) %>%
+  ggplot(aes(x = factor(pdet), y = valor, fill = factor(pdet))) +
+  geom_violin(trim = TRUE) + # Agrega la capa de violín
+  # Puedes añadir un boxplot o puntos para ver la mediana/cuartiles
+  geom_boxplot(width = 0.1, color = "black", alpha = 0.5) +
+  facet_wrap(~variable, scales = "free") +
+  scale_fill_manual(values = c("0" = "lightblue", "1" = "salmon"), labels = c("No PDET", "PDET")) +
+  labs(
+    x = "Grupo PDET", 
+    y = "Valor", 
+    fill = "Grupo", 
+    title = "Comparación de Distribuciones por Grupo PDET (Gráfico de Violín)"
+  ) +
+  theme_minimal()
+
+# Guardar el gráfico
+ggsave("Graficos-tablas/grafico_compl_violin_pdet.png", grafico_pdet_violin, width = 10, height = 7, dpi = 300)
+
+# Tabla de estadísticas descriptivas de homicidios por grupo PDET
+tabla_visitantes <- base_completa %>%
+  filter(!is.na(pdet), !is.na(visitantes_extranjeros_no_residentes)) %>%
+  group_by(codmpio, pdet) %>%                     # agrupa por municipio y grupo PDET
+  summarise(visitantes_extranjeros_no_residentes_total = sum(visitantes_extranjeros_no_residentes, na.rm = TRUE), .groups = "drop") %>%
+  group_by(pdet) %>%
+  summarise(
+    N_municipios = n(),                            # ahora sí cuenta municipios únicos
+    Min = min(visitantes_extranjeros_no_residentes_total),
+    Q1 = quantile(visitantes_extranjeros_no_residentes_total, 0.25),
+    Promedio = mean(visitantes_extranjeros_no_residentes_total),
+    Mediana = median(visitantes_extranjeros_no_residentes_total),
+    Q3 = quantile(visitantes_extranjeros_no_residentes_total, 0.75),
+    Max = max(visitantes_extranjeros_no_residentes_total),
+    Desviación = sd(visitantes_extranjeros_no_residentes_total)
+  ) %>%
+  mutate(Grupo = ifelse(pdet == 1, "PDET", "No PDET")) %>%
+  select(Grupo, everything(), -pdet)
+
+# Tabla HTML
+tabla_html_visitantes <- tabla_visitantes %>%
+  kable(
+    caption = "Estadísticas descriptivas de visitantes extranjeros no residentes por grupo PDET (nivel municipal)",
+    digits = 2,
+    col.names = c("Grupo", "N", "Mínimo", "1er Cuartil", "Promedio", "Mediana", "3er Cuartil", "Máximo", "Desviación estándar")
+  ) %>%
+  kable_classic(full_width = FALSE, html_font = "Cambria")
+
+# Guardar como HTML
+save_kable(tabla_html_visitantes, "Graficos-tablas/tabla_visitantes.html")
 ```
 
 ## Paso 4. Modelo empírico
