@@ -1388,6 +1388,7 @@ print(comparacion_sesgo_turismo)
 
 # Promedio del sesgo antes y después (para verificar mejora)
 mean(abs(comparacion_sesgo_turismo$Sesgo_Antes_t), na.rm = TRUE)
+
 mean(abs(comparacion_sesgo_turismo$Sesgo_Despues_t), na.rm = TRUE)
 
 # guardar
@@ -1540,6 +1541,82 @@ stargazer(
  modelo_did_psm_sinfe_turismo,
  title = "Impacto del PDET (DiD con PSM): Comparación de Modelos municipios con vocación turística",
  out = "Graficos-tablas/modelo_did_psm_comparativa_voc_turistica.html",
+ type = "text",
+ 
+ # Ajuste de etiquetas 
+ covariate.labels = c(
+  "Tratamiento (PDET)",              
+  "Post-Tratamiento (Post 2017)",    
+  "PDET $\\times$ Post (ATT)",       
+  "Población (Log)",
+  "Homicidios (Log)",
+  "Establecimientos (Log)",
+  "Desempeño Fiscal",
+  "Act. Terciarias"
+ ),
+ dep.var.labels = "Log(1+Visitantes Extranjeros)",
+ 
+ # Añadir filas para las estadísticas y los Efectos Fijos
+ add.lines = list(
+  c("Efectos Fijos de Municipio", "Sí", "Sí"),
+  c("Efectos Fijos de Año", "Sí", "Sí"),
+  c("Errores Estándar Agrupados", "Región", "Región")
+ ),
+ 
+ # Etiquetas de columnas
+ column.labels = c("con efectos mpio", "sin efectos")
+
+)
+```
+
+```{r}
+# modelos sin clusterizar los errores por región sino por departamentos
+
+base_voc_turismo <- base_voc_turismo %>%
+  mutate(
+    departamento = str_sub(codmpio, 1, 2)
+  )
+
+# Nuevos modelos
+# Se escoge el año de programa
+datos_emparejados_turismo <- datos_emparejados_turismo %>%
+  mutate(
+    post = as.numeric(ano >= 2017) # 1 si el año es 2017 o posterior, 0 si es anterior
+  )
+# Modelo 2 con controles
+modelo_did_psm_sinfe_turismo2 <- felm(
+ log1p(visitantes_extranjeros_no_residentes) ~ pdet + post + pdet*post +
+  log1p(poblacion) +
+  log1p(homicidios) +
+  log1p(t_establ_o) +
+  df_desemp_fisc +
+  act_terciarias 
+  | 0  
+  | 0
+  | departamento,
+ data = datos_emparejados_turismo
+)
+
+modelo_did_psm_mpiofe_turismo2 <- felm(
+ log1p(visitantes_extranjeros_no_residentes) ~ pdet + post + pdet*post +
+  log1p(poblacion) +
+  log1p(homicidios) +
+  log1p(t_establ_o) +
+  df_desemp_fisc +
+  act_terciarias 
+  | codmpio + ano
+  | 0
+  | departamento,
+ data = datos_emparejados_turismo
+)
+
+
+
+stargazer(
+ modelo_did_psm_mpiofe_turismo2,
+ modelo_did_psm_sinfe_turismo2,
+ title = "Impacto del PDET (DiD con PSM): Comparación de Modelos 2 municipios con vocación turística",
+ out = "Graficos-tablas/modelo_did_psm_comparativa_voc_turistica2.html",
  type = "text",
  
  # Ajuste de etiquetas 
