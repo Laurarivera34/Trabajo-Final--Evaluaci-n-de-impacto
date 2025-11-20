@@ -1506,49 +1506,41 @@ datos_emparejados_turismo <- datos_emparejados_turismo %>%
   mutate(
     post = as.numeric(ano >= 2017) # 1 si el año es 2017 o posterior, 0 si es anterior
   )
-
-# Modelo sin controles
-modelo_did_psm_turismo <- felm(
- log1p(visitantes_extranjeros_no_residentes) ~ pdet * post
-  | codmpio + ano 
-  | 0 
-  | region,
- data = datos_emparejados_turismo
-)
-
 # Modelo 2 con controles
-modelo_did_psm_control_turismo <- felm(
- log1p(visitantes_extranjeros_no_residentes) ~ pdet * post +
+modelo_did_psm_sinfe_turismo <- felm(
+ log1p(visitantes_extranjeros_no_residentes) ~ pdet + post + pdet*post +
   log1p(poblacion) +
   log1p(homicidios) +
   log1p(t_establ_o) +
   df_desemp_fisc +
-  act_terciarias
-  | codmpio + ano 
-  | 0 
+  act_terciarias 
+  | 0  
+  | 0
   | region,
  data = datos_emparejados_turismo
 )
 
-#------------ Posible solución al problema de inestabilidad numérica--------------# 
-
-modelo_feols_corregido_turismo <- feols(
-    log1p(visitantes_extranjeros_no_residentes) ~ i(pdet, post, ref=0) + 
-        log1p(poblacion) + log1p(homicidios) + log1p(t_establ_o) +
-        df_desemp_fisc + act_primarias + act_secundarias + act_terciarias
-    | codmpio + ano,
-    data = datos_emparejados_turismo,
-    cluster = ~codmpio
+modelo_did_psm_mpiofe_turismo <- felm(
+ log1p(visitantes_extranjeros_no_residentes) ~ pdet + post + pdet*post +
+  log1p(poblacion) +
+  log1p(homicidios) +
+  log1p(t_establ_o) +
+  df_desemp_fisc +
+  act_terciarias 
+  | codmpio + ano
+  | 0
+  | region,
+ data = datos_emparejados_turismo
 )
 
-#------------------------------------------------------------------------------#
+
 
 stargazer(
- modelo_did_psm_turismo,
- modelo_did_psm_control_turismo,
- title = "Impacto del PDET con vocación turistica (DiD con PSM): Comparación de Modelos",
- out = "Graficos-tablas/modelo_did_psm_comparativa.html",
- type = "html",
+ modelo_did_psm_mpiofe_turismo,
+ modelo_did_psm_sinfe_turismo,
+ title = "Impacto del PDET (DiD con PSM): Comparación de Modelos municipios con vocación turística",
+ out = "Graficos-tablas/modelo_did_psm_comparativa_voc_turistica.html",
+ type = "text",
  
  # Ajuste de etiquetas 
  covariate.labels = c(
@@ -1571,7 +1563,7 @@ stargazer(
  ),
  
  # Etiquetas de columnas
- column.labels = c("Sin Controles", "Con Controles")
+ column.labels = c("con efectos mpio", "sin efectos")
 
 )
 ```
