@@ -74,34 +74,81 @@ pacman::p_load(
   janitor       #clean names
 )
 
-# Leer archivo excel
+# Leer archivos excel
 educacion <- read_excel("Datos/PANEL_DE_EDUCACION(2023).xlsx")
-salud_servicios <- read_excel("Datos/PANEL_SALUD_Y_SERVICIOS.xlsx")
 violencia <- read_excel("Datos/PANEL_CONFLICTO_Y_VIOLENCIA(2024).xlsx")
 gobierno <- read_excel("Datos/PANEL_BUEN_GOBIERNO(2024).xlsx")
 caracteristicas <- read_excel("Datos/PANEL_CARACTERISTICAS_GENERALES(2024).xlsx")
 mpiopdet <- read_excel("Datos/MunicipiosPDET.xlsx")
 turismo <- read_excel("Datos/turismo.xlsx")
+#empresas_turisticas <- read_excel("Datos/empresas_activas_turismo.xlsx")
+#indicadores_demo <- read_excel("Datos/indicadores_demograficos.xlsx")
+#indicadores_econ <- read_excel("Datos/indicadores_econ.xlsx")
+#indicadores_seg <- read_excel("Datos/indicadores_seguridad.xlsx")
 
+
+#Cargar todas las hojas de base Valor agregado
+years <- as.character(2013:2022)
+
+va_sector <- map_dfr(
+  years,
+  ~ read_excel("Datos/valor_agregado_mun.xlsx", sheet = .x) %>%
+      mutate(ano = as.integer(.x))
+)
 ```
 
 ## Paso 1. Limpieza de datos
 
 ```{r}
-# estandarizar nombres de variables
-salud_servicios <- salud_servicios %>% clean_names()
+# Limpiar variables
+caracteristicas <- caracteristicas %>% clean_names()
+gobierno <- gobierno %>% clean_names()
+educacion <- educacion %>% clean_names()
+violencia <- violencia %>% clean_names()
+mpiopdet <- mpiopdet %>% clean_names()
 turismo <- turismo %>% clean_names()
+va_sector <- va_sector %>% clean_names()
+#empresas_turisticas <- empresas_turisticas %>% clean_names()
+#indicadores_demo <- indicadores_demo %>% clean_names()
+#indicadores_econ <- indicadores_econ %>% clean_names()
+#indicadores_seg <- indicadores_seg %>% clean_names()
 
-# renombrar variables 
-salud_servicios <- salud_servicios %>%
-  rename(codmpio = c_digo_dane_del_municipio,
-         ano = a_o)
+#Limpieza de variables y estandarizacion de la llave
+caracteristicas <- caracteristicas %>%
+  rename(cod_dpto = coddepto) %>%
+  mutate(cod_dpto = as.character(cod_dpto)) %>%
+  mutate(cod_dpto = str_pad(cod_dpto, width = 2, side = "left", pad = "0"))
 
-# convertirlo a numérico
+turismo <- turismo %>% 
+  select(-codmpio, -mpio)
+
+turismo <- turismo %>%
+  rename(codmpio = `codmpio_corregido`,
+         mpio = `mpio_corregido`)
+
+turismo <- turismo %>%
+  mutate(
+    codmpio = str_remove(as.character(codmpio), "^0")
+  )
+
+mpiopdet <- mpiopdet %>%
+  rename(
+    codmpio = codigo_dane_municipio
+  ) %>%
+  mutate(
+    codmpio = as.numeric(codmpio),
+    pdet = 1
+  ) %>%
+  select(codmpio,pdet)
+
+va_sector <- va_sector %>%
+  rename(codmpio = codigo_municipio) %>%
+  mutate(
+    codmpio = str_remove(as.character(codmpio), "^0")
+  )
+
+# Formato 
 educacion <- educacion %>%
-  mutate(across(c(ano, codmpio), as.numeric))
-
-salud_servicios <- salud_servicios %>%
   mutate(across(c(ano, codmpio), as.numeric))
 
 violencia <- violencia %>%
@@ -113,103 +160,198 @@ gobierno <- gobierno %>%
 caracteristicas <- caracteristicas %>%
   mutate(across(c(ano, codmpio), as.numeric))
 
-# convertir a numérico
 turismo <- turismo %>%
-  mutate(across(c(ano, codmpio), as.numeric))
+  mutate(across(c(codmpio), as.numeric))
 
-# pegar bases
-base_total <- educacion %>%
-  full_join(salud_servicios, by = c("codmpio", "ano")) %>%
-  full_join(violencia, by = c("codmpio", "ano")) %>%
-  full_join(gobierno, by = c("codmpio", "ano")) %>%
-  full_join(caracteristicas, by = c("codmpio", "ano"))
+va_sector <- va_sector %>%
+  mutate(across(c(codmpio), as.numeric))
 
-
-# estandarizar nombres de variables
-base_total <- base_total %>% clean_names()
-
-# base CEDE
-datoscede <- base_total %>%
-  select(
-    codmpio, ano,
-    mdm_g_ejecur,
-    df_desemp_fisc,
-    mdm_g_gobayt,
-    gandina, gcaribe, gpacifica, gorinoquia, gamazonia,
-    sisben_pobl_1, sisben_pobl_2, sisben_pobl_3, sisben_pobl_4,
-    sisben_pobl_5, sisben_pobl_6, sisben_pobl_7, sisben_pobl_8,
-    sisben_pobl_9, sisben_pobl_10,
-    altura, discapital, indrural,
-    homicidios, extorsion, errad_manual, o_desap_for, o_secuest, t_establ_o
-  )
-
-# años seleccionados para el análisis
-datoscede <- datoscede %>%
-  filter(ano >= 2013 & ano <= 2021)
-
-# para base larga con la variable de regiones y sisben
-#datoscede <- datoscede%>%
-#  pivot_longer(
- #   cols = c(gandina, gcaribe, gorinoquia, gpacifica, gamazonia),     names_to = "region",     values_to = "dummy_region"      
-  #)
-
-datoscede <- datoscede %>%
-  mutate(
-    region = case_when(
-      gandina == 1 ~ "Andina",
-      gcaribe == 1 ~ "Caribe",
-      gpacifica == 1 ~ "Pacífica",
-      gorinoquia == 1 ~ "Orinoquía",
-      gamazonia == 1 ~ "Amazonía",
-      TRUE ~ NA_character_
-    )
-  )
-
-datoscede <- datoscede %>%
-  select(-gandina, -gcaribe, -gpacifica, -gorinoquia, -gamazonia)
-
-# unir con mpio pdet
-mpiopdet <- mpiopdet %>%
-  rename(
-    codmpio = `Código DANE Municipio`
-  ) %>%
-  mutate(
-    codmpio = as.numeric(codmpio),
-    pdet = 1
-  ) %>%
-  select(codmpio,pdet)
-
-# se une la base de mpio pdet para clasificarlos 
-datoscede <- datoscede %>%
-  left_join(mpiopdet, by = "codmpio") %>%
-  mutate(pdet = if_else(is.na(pdet), 0, 1))
-
-# contar filas por municipio y año
-duplicados <- datoscede %>%
+#Eliminamos duplicados de la base turismo
+duplicados <- turismo %>%
   count(codmpio, ano) %>%
   filter(n > 1)
 
-# se revisa los mpios pdet por cada año
-conteo_pdet <- datoscede%>%
+turismo %>%
+  count(codmpio, ano) %>%
+  filter(n > 1)
+
+turismo %>%
+  semi_join(
+    turismo %>% count(codmpio, ano) %>% filter(n > 1),
+    by = c("codmpio", "ano")
+  ) %>% View()
+
+#Se agregan por como esta construida la base del Ministerio
+turismo <- turismo %>%
+  group_by(codmpio, ano) %>%
+  summarise(across(where(is.numeric), ~ sum(.x, na.rm = TRUE)), .groups = "drop")
+
+#Filtrado de variables de interés
+caracteristicas <- caracteristicas %>%
+  select(
+    codmpio, 
+    ano, 
+    cod_dpto,
+    depto,
+    municipio,
+    pobl_rur,
+    pobl_urb,
+    pobl_tot, 
+    indrural,
+    sisben_pobl_1,
+    sisben_pobl_2,
+    sisben_pobl_3,
+    sisben_pobl_4,
+    sisben_pobl_5,
+    sisben_pobl_6,
+    sisben_pobl_7,
+    sisben_pobl_8,
+    sisben_pobl_9,
+    sisben_pobl_10,
+    altura,
+    discapital
+  )
+
+educacion <- educacion %>%
+  select(
+    codmpio, 
+    ano, 
+    docen_total,
+    t_establ,
+    alumn_med,
+    s11_ingles,
+    s11_lectu
+  )
+
+gobierno <- gobierno %>%
+  select(
+    codmpio, 
+    ano, 
+    df_ing_propios,
+    df_gast_inv,
+    df_desemp_fisc
+  )
+
+violencia <- violencia %>%
+  select(
+    codmpio, 
+    ano, 
+    homicidios,
+    extorsion,
+    h_coca,
+    eventos_minas,
+    ataq_instpol
+  )
+
+va_sector <- va_sector %>%
+  select(
+    codmpio, 
+    ano, 
+    municipio,
+    actividades_terciarias,
+    valor_agregado
+  )
+
+va_sector <- va_sector %>%
+  mutate(
+    participacion_terciarias = (actividades_terciarias / valor_agregado) * 100
+  )
+
+# Union final de las bases filtradas
+base_total <- caracteristicas %>%
+  left_join(
+   educacion,
+    by = c("codmpio", "ano") 
+  )
+
+base_total <- base_total %>%
+  left_join(
+   gobierno,
+    by = c("codmpio", "ano") 
+  )
+
+base_total <- base_total %>%
+  left_join(
+   violencia,
+    by = c("codmpio", "ano") 
+  )
+
+base_total <- base_total %>%
+  left_join(
+   turismo,
+    by = c("codmpio", "ano") 
+  )
+
+base_total <- base_total %>%
+  left_join(
+   va_sector,
+    by = c("codmpio", "ano") 
+  )
+
+#Revision de duplicados
+base_total %>%
+  count(codmpio, ano) %>%
+  filter(n > 1)
+
+# Organizar base final y guardamos 
+base_total <- base_total %>%
+  rename(mpio = municipio.x) %>%
+  select(-municipio.y)
+
+# años seleccionados para el análisis
+base_total <- base_total %>%
+  filter(ano >= 2013 & ano <= 2021)
+
+# se une la base de mpio pdet para clasificarlos 
+base_total <- base_total %>%
+  left_join(mpiopdet, by = "codmpio") %>%
+  mutate(pdet = if_else(is.na(pdet), 0, 1))
+
+#Verificación de duplicados
+base_total %>%
+  count(codmpio, ano) %>%
+  filter(n > 1)
+
+# Se revisa los mpios pdet por cada año
+conteo_pdet <- base_total%>%
   group_by(ano) %>%
   summarise(
     municipios_pdet = sum(pdet == 1, na.rm = TRUE),
     .groups = "drop"
   )
 
-#____________
+#Creación de una variable 
+
+codigos_turismo <- c( "20570", "20001", "44650", "20013", "20400", "20443", "20750", "44090", "44279", "47053", "47189", "47288", "47001", "18592", "50370", "95001", "50370", "50330", "50683", "50400", "18094", "18150", "18247", "18256", "18001", "18410", "18479", "18592", "18610", "18753", "52835", "52079", "13212", "13244", "73319", "13654", "13657", "70230", "70713", "70204", "70473", "70508", "70418", "19698", "19455", "19743", "19585", "19780", "76109", "19809", "81065", "81736", "81794", "86001", "86573", "68686", "86865", "86885", "86569", "86320", "5045", "5147", "5172", "5234", "5480", "5490", "5665", "5837", "27800", "27006", "17614", "27361", "27495", "99001", "99773", "54250", "54245", "54720", "54261", "54874", "23068", "23807", "23855", "73555", "73168", "15236", "15533", "25878", "25438", "5861", "17042", "17088", "17616", "85125", "13873", "11001" )
+
+base_total <- base_total %>%
+  mutate(vocacion_turistica = if_else(codmpio %in% codigos_turismo, 1, 0))
+
+base_total %>%
+  filter(vocacion_turistica == 1) %>%
+  distinct(codmpio)
+
+base_total %>%
+  filter(vocacion_turistica == 1) %>%
+  count(codmpio)
 
 # Porcentaje de NAs por variable (columna)
-colMeans(is.na(datoscede)) * 100
+colMeans(is.na(base_total)) * 100
 
 # se eliminan las variables con mayor prop de na
-vars_a_eliminar <- c("extorsion", "errad_manual", "o_desap_for", "o_secuest")
+base_total <- base_total %>%
+  select(-h_coca, -eventos_minas)
 
-datoscede <- datoscede %>%
-  select(-any_of(vars_a_eliminar))
+write.csv(base_total, 
+          file = "base_panel_final.csv", 
+          row.names = FALSE,  
+          na = ""           
+          )
+
+#------------------------------------------- aqui vamos ----------------------------
 
 #Tabla auxiliar para graficar sisben 
-datos_sisben <- datoscede
+datos_sisben <- base_total
 
 #Formato largo para el gráfico
 datos_sisben <- datos_sisben %>%
@@ -356,9 +498,7 @@ ggsave(
 )
 ```
 
-\
-
-## Paso 1.1 Estadísticas Descriptivas inicial
+## Paso 3.1 Estadísticas Descriptivas inicial
 
 ```{r}
 # estadísticas descriptivas por grupo PDET
@@ -533,187 +673,6 @@ grafico_indrural <- datoscede_mpio %>%
 # Guardar gráfico
 ggsave("Graficos-tablas/grafico_indrural.png", grafico_indrural, width = 7, height = 5, dpi = 300)
 
-```
-
-## Paso 3 Construcción base completa con turismo
-
-```{r}
-# Anexo de variables con información de poblacion y valor agregado
-
-#Copia  para hacer las modificaciones 
-datos_borrador <- datoscede
-
-#Cargamos la base que contiene la poblacion
-datos_poblacion <- read_excel("Datos/Total_pob_mun.xlsx")
-
-#Estandarizamos las variables
-datos_poblacion<- datos_poblacion %>%
-  rename(
-    codmpio = MPIO,   
-    ano      = AÑO,       
-    poblacion = Población    
-  )
-
-#Eliminamos las variables sin uso
-datos_poblacion <- datos_poblacion %>%
-  select(-`DP`, -`DPNOM`, -`DPMP`, -`ÁREA GEOGRÁFICA`)
-
-#Diccionario de regiones
-region_dic <- datoscede %>%
-  select(codmpio, region) %>%
-  distinct()
-
-#Modificacion del diccionario
-region_dic <- region_dic %>%
-  mutate(codmpio = as.character(codmpio))
-
-#Estandarizar formato
-datos_poblacion <- datos_poblacion %>%
-  mutate(
-    codmpio = str_remove(as.character(codmpio), "^0")
-  )
-
-#Juntamos la base con el diccionario
-datos_poblacion <- datos_poblacion %>%
-  left_join(region_dic, by = "codmpio")
-
-#Verificacion del pegue 
-faltantes_region <- datos_poblacion %>% filter(is.na(region)) %>% distinct(codmpio)
-
-#Estandarizar formato
-datos_borrador <- datos_borrador %>%
-  mutate(
-    codmpio = as.character(codmpio),
-    ano = as.integer(ano)
-  )
-
-datos_poblacion <- datos_poblacion %>%
-  mutate(
-    codmpio = as.character(codmpio),
-    ano = as.integer(ano)
-  )
-
-#Unimos las bases
-base_final <- datos_borrador %>%
-  left_join(
-    datos_poblacion %>% select(codmpio, ano, poblacion), 
-    by = c("codmpio","ano")
-  )
-
-base_final %>% filter(is.na(poblacion)) %>% count()
-
-#Verificacion
-base_final %>% filter(is.na(poblacion)) %>% count()
-
-```
-
-```{r}
-#Cargar base de valor agregado para los municipios 
-total_VA<- read_excel("Datos/valor_agregado_mun.xlsx", sheet = "Total") %>%
-  pivot_longer(
-    cols = matches("20\\d{2}"),
-    names_to = "ano",
-    values_to = "valor_agregado_total"
-  )
-
-#Estandarizar el formato
-total_VA<- total_VA %>%
-  rename(
-    codmpio = `Código Municipio`,   
-  )
-
-total_VA <- total_VA %>%
-  select(-`Municipio`, -`Código Departamento`, -`Departamento`,)
-
-total_VA <- total_VA %>%
-  mutate(
-    codmpio = str_remove(as.character(codmpio), "^0")
-  )
-
-#Cargar el resto de las hojas
-years <- as.character(2013:2022)
-
-va_sector <- map_dfr(
-  years,
-  ~ read_excel("Datos/valor_agregado_mun.xlsx", sheet = .x) %>%
-      mutate(ano = as.integer(.x))
-)
-
-#Estandarizar el formato
-va_sector<- va_sector %>%
-  rename(
-    codmpio = `Código Municipio`,
-    act_primarias = `Actividades primarias *`,
-    act_secundarias = `Actividades secundarias **`,
-    act_terciarias = `Actividades terciarias ***`,
-    peso_relativo = `Peso relativo municipal en el valor agregado departamental (%)`
-  )
-
-va_sector <- va_sector %>%
-  select(-`Municipio`, -`Código Departamento`, -`Año`,-`Departamento`,-`Valor agregado\r\n`)
-
-
-va_sector <- va_sector %>%
-  mutate(
-    codmpio = str_remove(as.character(codmpio), "^0")
-  )
-
-
-#Estandarizar formatos
-base_final <- base_final %>%
-  mutate(
-    codmpio = as.character(codmpio),
-    ano = as.integer(ano)
-  )
-
-
-va_sector <- va_sector %>%     
-  mutate(
-    codmpio = as.character(codmpio),
-    ano = as.integer(ano)
-  )
-
-
-turismo <- turismo %>%     
-  mutate(
-    codmpio = as.character(codmpio),
-    ano = as.integer(ano)
-  )
-
-#Unir bases 
-base_completa <- base_final %>%
-  left_join(
-    va_sector,
-    by = c("codmpio", "ano")
-  )
-
-base_completa <- base_completa %>%     
-  mutate(
-    codmpio = as.character(codmpio),
-    ano = as.integer(ano)
-  )
-
-# Se pega la base completa con la de turismo
-base_completa <- base_completa %>%
-  full_join(turismo, by = c("codmpio", "ano"))
-
-# Se deja NA los valores faltantes
-base_completa <- base_completa %>%
-  mutate(across(
-    where(is.character),
-    ~ na_if(trimws(.), "NA")
-  ))
-# Nuevas variables a numerica 
-base_completa <- base_completa %>%
-  mutate(across(
-    c(llegadas_pasajeros_nacionales,
-      llegadas_internacionales,
-      visitantes_extranjeros_no_residentes,
-      visitantes_pnn,
-      prestadores_de_servicios_turisticos_activos,
-      establecimientos_de_alojamiento_y_hospedaje),
-    as.numeric
-  ))
 ```
 
 ## Paso 3.1 Estadísticas Descriptivas con la base completa
