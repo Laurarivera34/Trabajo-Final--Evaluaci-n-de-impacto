@@ -407,9 +407,7 @@ write.csv(base_completa,
           )
 ```
 
-## 2. Estadísticas Descriptivas inicial
-
-PENDIENTE POR HACER CON LAS NUEVAS VARIABLES
+## 2. Estadísticas Descriptivas con la base completa (Falta)
 
 ```{r}
 # estadísticas descriptivas de variables
@@ -592,8 +590,6 @@ ggsave("Graficos-tablas/grafico_indrural.png", grafico_indrural, width = 7, heig
 
 ```
 
-## Paso 3.1 Estadísticas Descriptivas con la base completa
-
 ```{r}
 # estadísticas descriptivas 
 vars_interes_compl <- c("indrural", "discapital", "df_desemp_fisc",
@@ -749,7 +745,7 @@ print(proporcion_pdet_turismo)
 
 ## Paso 4. Modelo empírico - VERSION CAMILA
 
-#### Modelo sin PSM con nuevas variables  y aproximación comparada
+#### Modelo sin PSM con nuevas variables y aproximación comparada
 
 ```{r}
 #Cumplimiento de supuesto tendencias paralelas
@@ -818,21 +814,31 @@ base_lags <- base_completa %>%
   arrange(codmpio, ano) %>%
   group_by(codmpio) %>%
   mutate(
-    l_log_pobl_tot      = lag(log1p(pobl_tot), 1),
-    l_log_homicidios    = lag(log1p(homicidios + 1), 1),
-    l_log_extorsion     = lag(log1p(extorsion + 1), 1),
-    l_df_ing_propios    = lag(df_ing_propios, 1),
-    l_df_gast_inv       = lag(df_gast_inv, 1),
-    l_df_desemp_fisc    = lag(df_desemp_fisc, 1),
-    l_log_valor_agregado = lag(log1p(valor_agregado + 1), 1),
-    l_actividades_terciarias = lag(actividades_terciarias, 1),
+    l_log_pobl_tot   = lag(log_pobl_tot, 1),
+    l_indrural       = lag(indrural, 1),
+    l_tasa_urbanizacion = lag(tasa_urbanizacion, 1),
+    l_tasa_sisben    = lag(tasa_sisben, 1),
+
+    # Seguridad
+    l_tasa_homicidios = lag(tasa_homicidios, 1),
+    l_tasa_extorsion = lag(tasa_extorsion, 1),
+    l_tasa_ataq_instpol = lag(tasa_ataq_instpol, 1),
+
+    # Finanzas públicas
+    l_df_ing_propios = lag(df_ing_propios, 1),
+    l_df_gast_inv    = lag(df_gast_inv, 1),
+    l_df_desemp_fisc = lag(df_desemp_fisc, 1),
+
+    # Economía
+    l_valor_agregado_pc = lag(valor_agregado_pc, 1),
     l_participacion_terciarias = lag(participacion_terciarias, 1),
-    l_tasa_sisben       = lag(tasa_sisben, 1),
-    l_docen_total       = lag(docen_total, 1),
-    l_t_establ          = lag(t_establ, 1),
-    l_alumn_med         = lag(alumn_med, 1),
-    l_s11_ingles        = lag(s11_ingles, 1),
-    l_s11_lectu         = lag(s11_lectu, 1)
+
+    # Educación
+    l_tasa_docentes  = lag(tasa_docentes, 1),
+    l_tasa_alumnos_med = lag(tasa_alumnos_med, 1),
+    l_s11_ingles     = lag(s11_ingles, 1),
+    l_s11_lectu      = lag(s11_lectu, 1),
+    l_log_t_establ   = lag(log_t_establ, 1)
   ) %>%
   ungroup()
 
@@ -849,19 +855,21 @@ modelo_1_nopsm <- felm(
   log1p(visitantes_extranjeros_no_residentes) ~ 
     pdet * post +
     l_log_pobl_tot +
-    l_log_homicidios +
-    l_log_extorsion +
+    l_indrural + 
+    l_tasa_urbanizacion +
+    l_tasa_sisben +
+    l_tasa_homicidios +
+    l_tasa_extorsion +
+    l_tasa_ataq_instpol +
     l_df_ing_propios +
     l_df_gast_inv +
     l_df_desemp_fisc +
-    l_log_valor_agregado +
-    l_actividades_terciarias +
+    l_valor_agregado_pc +
     l_participacion_terciarias +
-    l_tasa_sisben +
-    l_docen_total +
-    l_t_establ +
-    l_alumn_med +
+    l_tasa_docentes +
+    l_tasa_alumnos_med +
     l_s11_ingles +
+    l_log_t_establ +
     l_s11_lectu
   | codmpio + ano
   | 0 
@@ -871,47 +879,54 @@ modelo_1_nopsm <- felm(
 
 stargazer(
   modelo_1_nopsm,
-  title = "Modelo de Diferencias en Diferencias: PDET vs No PDET",
-  type  = "text",  
-  dep.var.labels = "(log+1) visitantes extranjeros no residentes",
+  title = "Modelo 1 – DiD PDET vs No PDET (sin PSM)",
+  type  = "text",   
+  dep.var.labels = "log(1 + visitantes extranjeros no residentes)",
+  
   covariate.labels = c(
-    "PDET", 
+    "PDET",
     "Post 2017",
     "PDET × Post",
     "Lag log población total",
-    "Lag log homicidios",
-    "Lag log extorsión",
+    "Lag índice ruralidad",
+    "Lag tasa urbanización",
+    "Lag tasa SISBEN",
+    "Lag tasa homicidios",
+    "Lag tasa extorsión",
+    "Lag tasa ataques institucionales",
     "Lag ingresos propios",
     "Lag gasto inversión",
     "Lag desempeño fiscal",
-    "Lag log valor agregado",
-    "Lag actividades terciarias",
-    "Lag participación terciarias",
-    "Lag tasa SISBEN",
-    "Lag total docentes",
-    "Lag establecimientos educativos",
-    "Lag alumnos media",
+    "Lag valor agregado per cápita",
+    "Lag participación sector terciario",
+    "Lag tasa docentes",
+    "Lag tasa alumnos media",
     "Lag Saber 11 inglés",
+    "Lag log establecimientos educativos",
     "Lag Saber 11 lectura"
   ),
+
   keep = c(
     "pdet", "post", "pdet:post",
     "l_log_pobl_tot",
-    "l_log_homicidios",
-    "l_log_extorsion",
+    "l_indrural",
+    "l_tasa_urbanizacion",
+    "l_tasa_sisben",
+    "l_tasa_homicidios",
+    "l_tasa_extorsion",
+    "l_tasa_ataq_instpol",
     "l_df_ing_propios",
     "l_df_gast_inv",
     "l_df_desemp_fisc",
-    "l_log_valor_agregado",
-    "l_actividades_terciarias",
+    "l_valor_agregado_pc",
     "l_participacion_terciarias",
-    "l_tasa_sisben",
-    "l_docen_total",
-    "l_t_establ",
-    "l_alumn_med",
+    "l_tasa_docentes",
+    "l_tasa_alumnos_med",
     "l_s11_ingles",
+    "l_log_t_establ",
     "l_s11_lectu"
   ),
+
   omit.stat = c("f", "ser", "rsq"),
   no.space = TRUE
 )
@@ -926,23 +941,25 @@ muestra_modelo2 <- base_lags %>%
   filter(pdet == 0 | (pdet == 1 & vocacion_turistica == 1))
 
 
-modelo_2 <- felm(
+modelo_2_nopsm <- felm(
   log1p(visitantes_extranjeros_no_residentes) ~ 
     tratado_tur * post +
     l_log_pobl_tot +
-    l_log_homicidios +
-    l_log_extorsion +
+    l_indrural + 
+    l_tasa_urbanizacion +
+    l_tasa_sisben +
+    l_tasa_homicidios +
+    l_tasa_extorsion +
+    l_tasa_ataq_instpol +
     l_df_ing_propios +
     l_df_gast_inv +
     l_df_desemp_fisc +
-    l_log_valor_agregado +
-    l_actividades_terciarias +
+    l_valor_agregado_pc +
     l_participacion_terciarias +
-    l_tasa_sisben +
-    l_docen_total +
-    l_t_establ +
-    l_alumn_med +
+    l_tasa_docentes +
+    l_tasa_alumnos_med +
     l_s11_ingles +
+    l_log_t_establ +
     l_s11_lectu
   | codmpio + ano
   | 0 
@@ -951,38 +968,55 @@ modelo_2 <- felm(
 )
 
 stargazer(
-  modelo_2,
-  title = "Diferencias en diferencias: PDET con vocación turística vs No PDET",
-  type  = "text",
+  modelo_2_nopsm,
+  title = "Modelo 2 – DiD: PDET con vocación turística vs No PDET (sin PSM)",
+  type  = "text",   
   dep.var.labels = "log(1 + visitantes extranjeros no residentes)",
+  
   covariate.labels = c(
-    "Tratamiento (PDET turístico)",
+    "Tratado turístico (PDET con vocación turística)",
     "Post 2017",
-    "PDET turístico × Post",
+    "Tratado turístico × Post",
     "Lag log población total",
-    "Lag log homicidios",
-    "Lag log extorsión",
+    "Lag índice ruralidad",
+    "Lag tasa urbanización",
+    "Lag tasa SISBEN",
+    "Lag tasa homicidios",
+    "Lag tasa extorsión",
+    "Lag tasa ataques institucionales",
     "Lag ingresos propios",
     "Lag gasto inversión",
     "Lag desempeño fiscal",
-    "Lag log valor agregado",
-    "Lag actividades terciarias",
-    "Lag participación terciarias",
-    "Lag tasa SISBEN",
-    "Lag total docentes",
-    "Lag establecimientos educativos",
-    "Lag alumnos media",
+    "Lag valor agregado per cápita",
+    "Lag participación sector terciario",
+    "Lag tasa docentes",
+    "Lag tasa alumnos media",
     "Lag Saber 11 inglés",
+    "Lag log establecimientos educativos",
     "Lag Saber 11 lectura"
   ),
+  
   keep = c(
-    "treat_tur_vs_nopdet", "post", "treat_tur_vs_nopdet:post",
-    "l_log_pobl_tot", "l_log_homicidios", "l_log_extorsion",
-    "l_df_ing_propios", "l_df_gast_inv", "l_df_desemp_fisc",
-    "l_log_valor_agregado", "l_actividades_terciarias", "l_participacion_terciarias",
-    "l_tasa_sisben", "l_docen_total", "l_t_establ", "l_alumn_med",
-    "l_s11_ingles", "l_s11_lectu"
+    "tratado_tur", "post", "tratado_tur:post",
+    "l_log_pobl_tot",
+    "l_indrural",
+    "l_tasa_urbanizacion",
+    "l_tasa_sisben",
+    "l_tasa_homicidios",
+    "l_tasa_extorsion",
+    "l_tasa_ataq_instpol",
+    "l_df_ing_propios",
+    "l_df_gast_inv",
+    "l_df_desemp_fisc",
+    "l_valor_agregado_pc",
+    "l_participacion_terciarias",
+    "l_tasa_docentes",
+    "l_tasa_alumnos_med",
+    "l_s11_ingles",
+    "l_log_t_establ",
+    "l_s11_lectu"
   ),
+  
   omit.stat = c("f", "ser", "rsq"),
   no.space = TRUE
 )
@@ -996,23 +1030,25 @@ muestra_modelo3 <- base_lags %>%
 muestra_modelo3 <- base_lags %>%
   filter(pdet == 1)
 
-modelo_3 <- felm(
+modelo_3_nopsm <- felm(
   log1p(visitantes_extranjeros_no_residentes) ~ 
     tratado_tur * post +
     l_log_pobl_tot +
-    l_log_homicidios +
-    l_log_extorsion +
+    l_indrural + 
+    l_tasa_urbanizacion +
+    l_tasa_sisben +
+    l_tasa_homicidios +
+    l_tasa_extorsion +
+    l_tasa_ataq_instpol +
     l_df_ing_propios +
     l_df_gast_inv +
     l_df_desemp_fisc +
-    l_log_valor_agregado +
-    l_actividades_terciarias +
+    l_valor_agregado_pc +
     l_participacion_terciarias +
-    l_tasa_sisben +
-    l_docen_total +
-    l_t_establ +
-    l_alumn_med +
+    l_tasa_docentes +
+    l_tasa_alumnos_med +
     l_s11_ingles +
+    l_log_t_establ +
     l_s11_lectu
   | codmpio + ano          
   | 0 
@@ -1021,26 +1057,61 @@ modelo_3 <- felm(
 )
 
 stargazer(
-  modelo_3,
-  title = "DiD: PDET con vocación turística vs PDET sin vocación turística",
-  type  = "text",
+  modelo_3_nopsm,
+  title = "Modelo 3 – DiD: PDET con vocación turística vs PDET sin vocación turística (sin PSM)",
+  type  = "text", 
   dep.var.labels = "log(1 + visitantes extranjeros no residentes)",
-  keep = c(
-    "treat_pdet_tur", "post", "treat_pdet_tur:post",
-    "l_log_pobl_tot", "l_log_homicidios", "l_log_extorsion",
-    "l_df_ing_propios", "l_df_gast_inv", "l_df_desemp_fisc",
-    "l_log_valor_agregado", "l_actividades_terciarias",
-    "l_participacion_terciarias", "l_tasa_sisben",
-    "l_docen_total", "l_t_establ", "l_alumn_med",
-    "l_s11_ingles", "l_s11_lectu"
+  
+  covariate.labels = c(
+    "PDET turístico (1 = vocación turística)",
+    "Post 2017",
+    "PDET turístico × Post",
+    "Lag log población total",
+    "Lag índice ruralidad",
+    "Lag tasa urbanización",
+    "Lag tasa SISBEN",
+    "Lag tasa homicidios",
+    "Lag tasa extorsión",
+    "Lag tasa ataques institucionales",
+    "Lag ingresos propios",
+    "Lag gasto inversión",
+    "Lag desempeño fiscal",
+    "Lag valor agregado per cápita",
+    "Lag participación sector terciario",
+    "Lag tasa docentes",
+    "Lag tasa alumnos media",
+    "Lag Saber 11 inglés",
+    "Lag log establecimientos educativos",
+    "Lag Saber 11 lectura"
   ),
+  
+  keep = c(
+    "tratado_tur", "post", "tratado_tur:post",
+    "l_log_pobl_tot",
+    "l_indrural",
+    "l_tasa_urbanizacion",
+    "l_tasa_sisben",
+    "l_tasa_homicidios",
+    "l_tasa_extorsion",
+    "l_tasa_ataq_instpol",
+    "l_df_ing_propios",
+    "l_df_gast_inv",
+    "l_df_desemp_fisc",
+    "l_valor_agregado_pc",
+    "l_participacion_terciarias",
+    "l_tasa_docentes",
+    "l_tasa_alumnos_med",
+    "l_s11_ingles",
+    "l_log_t_establ",
+    "l_s11_lectu"
+  ),
+  
   omit.stat = c("f", "ser", "rsq"),
   no.space = TRUE
 )
-
 ```
 
-#### Modelo con PSM, nuevas variables y aproximación comparada 
+#### Modelo con PSM, nuevas variables y aproximación comparada
 
 ```{r}
 #Propensity Score y tendencias paralelas
