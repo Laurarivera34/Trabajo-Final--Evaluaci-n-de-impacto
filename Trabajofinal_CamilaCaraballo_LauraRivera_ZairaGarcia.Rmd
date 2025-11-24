@@ -97,7 +97,7 @@ va_sector <- map_dfr(
 )
 ```
 
-## Paso 1. Limpieza de datos
+## 1. Limpieza de datos
 
 ```{r}
 # Limpiar variables
@@ -116,8 +116,7 @@ va_sector <- va_sector %>% clean_names()
 #Limpieza de variables y estandarizacion de la llave
 caracteristicas <- caracteristicas %>%
   rename(cod_dpto = coddepto) %>%
-  mutate(cod_dpto = as.character(cod_dpto)) %>%
-  mutate(cod_dpto = str_pad(cod_dpto, width = 2, side = "left", pad = "0"))
+  mutate(cod_dpto = str_pad(as.character(cod_dpto), width = 2, side = "left", pad = "0"))
 
 turismo <- turismo %>% 
   select(-codmpio, -mpio)
@@ -167,6 +166,23 @@ va_sector <- va_sector %>%
   mutate(across(c(codmpio), as.numeric))
 
 #Eliminamos duplicados de la base turismo
+variables_turismo <- c(
+  "llegadas_pasajeros_nacionales", 
+  "llegadas_internacionales", 
+  "visitantes_extranjeros_no_residentes",
+  "visitantes_pnn",
+  "prestadores_de_servicios_turisticos_activos",
+  "establecimientos_de_alojamiento_y_hospedaje"
+)
+
+turismo <- turismo %>%
+  mutate(
+    across(
+      .cols = all_of(variables_turismo),
+      .fns = as.numeric
+    )
+  )
+
 duplicados <- turismo %>%
   count(codmpio, ano) %>%
   filter(n > 1)
@@ -181,10 +197,20 @@ turismo %>%
     by = c("codmpio", "ano")
   ) %>% View()
 
-#Se agregan por como esta construida la base del Ministerio
-turismo <- turismo %>%
+#Se agregan duplicados de la base 
+turismo_consolidado <- turismo %>%
   group_by(codmpio, ano) %>%
-  summarise(across(where(is.numeric), ~ sum(.x, na.rm = TRUE)), .groups = "drop")
+  summarise(
+    across(
+      .cols = all_of(variables_turismo),
+      .fns = ~sum(., na.rm = TRUE)
+    ),
+    .groups = 'drop' 
+  )
+
+duplicados_tc <- turismo_consolidado  %>%
+  count(codmpio, ano) %>%
+  filter(n > 1)
 
 #Filtrado de variables de interés
 caracteristicas <- caracteristicas %>%
@@ -258,252 +284,143 @@ va_sector <- va_sector %>%
   )
 
 # Union final de las bases filtradas
-base_total <- caracteristicas %>%
+base_completa <- caracteristicas %>%
   left_join(
    educacion,
     by = c("codmpio", "ano") 
   )
 
-base_total <- base_total %>%
+base_completa <- base_completa %>%
   left_join(
    gobierno,
     by = c("codmpio", "ano") 
   )
 
-base_total <- base_total %>%
+base_completa <- base_completa %>%
   left_join(
    violencia,
     by = c("codmpio", "ano") 
   )
 
-base_total <- base_total %>%
+base_completa <- base_completa %>%
   left_join(
-   turismo,
+   turismo_consolidado,
     by = c("codmpio", "ano") 
   )
 
-base_total <- base_total %>%
+base_completa <- base_completa %>%
   left_join(
    va_sector,
     by = c("codmpio", "ano") 
   )
 
 #Revision de duplicados
-base_total %>%
+base_completa %>%
   count(codmpio, ano) %>%
   filter(n > 1)
 
 # Organizar base final y guardamos 
-base_total <- base_total %>%
+base_completa <- base_completa %>%
   rename(mpio = municipio.x) %>%
   select(-municipio.y)
 
 # años seleccionados para el análisis
-base_total <- base_total %>%
+base_completa <- base_completa %>%
   filter(ano >= 2013 & ano <= 2021)
 
 # se une la base de mpio pdet para clasificarlos 
-base_total <- base_total %>%
+base_completa <- base_completa %>%
   left_join(mpiopdet, by = "codmpio") %>%
   mutate(pdet = if_else(is.na(pdet), 0, 1))
 
 #Verificación de duplicados
-base_total %>%
+base_completa %>%
   count(codmpio, ano) %>%
   filter(n > 1)
 
 # Se revisa los mpios pdet por cada año
-conteo_pdet <- base_total%>%
+conteo_pdet <- base_completa%>%
   group_by(ano) %>%
   summarise(
     municipios_pdet = sum(pdet == 1, na.rm = TRUE),
     .groups = "drop"
   )
 
-#Creación de una variable 
-
+#Creación de variables vocación turística y participación
 codigos_turismo <- c( "20570", "20001", "44650", "20013", "20400", "20443", "20750", "44090", "44279", "47053", "47189", "47288", "47001", "18592", "50370", "95001", "50370", "50330", "50683", "50400", "18094", "18150", "18247", "18256", "18001", "18410", "18479", "18592", "18610", "18753", "52835", "52079", "13212", "13244", "73319", "13654", "13657", "70230", "70713", "70204", "70473", "70508", "70418", "19698", "19455", "19743", "19585", "19780", "76109", "19809", "81065", "81736", "81794", "86001", "86573", "68686", "86865", "86885", "86569", "86320", "5045", "5147", "5172", "5234", "5480", "5490", "5665", "5837", "27800", "27006", "17614", "27361", "27495", "99001", "99773", "54250", "54245", "54720", "54261", "54874", "23068", "23807", "23855", "73555", "73168", "15236", "15533", "25878", "25438", "5861", "17042", "17088", "17616", "85125", "13873", "11001" )
 
-base_total <- base_total %>%
+base_completa <- base_completa %>%
   mutate(vocacion_turistica = if_else(codmpio %in% codigos_turismo, 1, 0))
 
-base_total %>%
+base_completa %>%
   filter(vocacion_turistica == 1) %>%
   distinct(codmpio)
 
-base_total %>%
+base_completa %>%
   filter(vocacion_turistica == 1) %>%
   count(codmpio)
 
 # Porcentaje de NAs por variable (columna)
-colMeans(is.na(base_total)) * 100
+colMeans(is.na(base_completa)) * 100
 
 # se eliminan las variables con mayor prop de na
-base_total <- base_total %>%
+base_completa <- base_completa %>%
   select(-h_coca, -eventos_minas)
 
-write.csv(base_total, 
+#Modificar formato para dar tratamiento a variables de sisben 
+columnas_sisben <- c("sisben_pobl_1", "sisben_pobl_2", "sisben_pobl_3", "sisben_pobl_4", "sisben_pobl_5", "sisben_pobl_6", "sisben_pobl_7", "sisben_pobl_8", "sisben_pobl_9", "sisben_pobl_10")
+
+base_completa <- base_completa %>%
+  mutate(
+    total_sisben = rowSums(select(., all_of(columnas_sisben)), na.rm = TRUE)
+  )
+
+#Calculamos la tasa de personas con sisben por municipio 
+base_completa <- base_completa %>%
+  mutate(
+    tasa_sisben = (total_sisben/pobl_tot) * 100,
+    tasa_sisben = ifelse(is.infinite(tasa_sisben), NA, tasa_sisben)
+  )
+
+base_completa <- base_completa %>%
+  select(-columnas_sisben)
+
+#Creamos variables transformadas
+base_completa <- base_completa %>%
+  mutate(
+    tasa_homicidios = (homicidios / pobl_tot) * 100000,
+    tasa_ataq_instpol = (ataq_instpol / pobl_tot) * 100000,
+    tasa_extorsion = (extorsion / pobl_tot) * 100000,
+    log_t_establ = log(t_establ + 1),
+    log_pobl_tot = log(pobl_tot + 1),
+    tasa_docentes = (docen_total / pobl_tot) * 100,
+    tasa_alumnos_med = (alumn_med / pobl_tot) * 100,
+    tasa_urbanizacion = (pobl_urb / pobl_tot) * 100,
+    valor_agregado_pc = (valor_agregado / pobl_tot) * 100,
+  )
+  
+
+write.csv(base_completa, 
           file = "base_panel_final.csv", 
           row.names = FALSE,  
           na = ""           
           )
-
-#------------------------------------------- aqui vamos ----------------------------
-
-#Tabla auxiliar para graficar sisben 
-datos_sisben <- base_total
-
-#Formato largo para el gráfico
-datos_sisben <- datos_sisben %>%
-  # 1. FILTRAR por el año correcto
-  filter(ano == 2016) %>%
-  
-  # 2. TRANSFORMAR de ANCHA a LARGA (Pivot)
-  pivot_longer(
-    cols = starts_with("sisben_pobl_"),
-    names_to = "Grupo_Edad_Num",        
-    values_to = "Poblacion"             
-  ) %>%
-  
-  # 3. LIMPIAR y ETIQUETAR (Crear categorías legibles)
-  mutate(
-    # Aseguramos que la clasificación PDET sea un factor y se llame 'Clasificacion_PDET'
-    Clasificacion_PDET = factor(pdet),
-    
-    # Mapeo de los 10 grupos de edad (AJUSTA LOS RANGOS DE EDAD SI SON DIFERENTES)
-    Grupo_Edad = case_when(
-      Grupo_Edad_Num == "sisben_pobl_1" ~ "0-9 años",
-      Grupo_Edad_Num == "sisben_pobl_2" ~ "10-19 años",
-      Grupo_Edad_Num == "sisben_pobl_3" ~ "20-29 años",
-      Grupo_Edad_Num == "sisben_pobl_4" ~ "30-39 años",
-      Grupo_Edad_Num == "sisben_pobl_5" ~ "40-49 años",
-      Grupo_Edad_Num == "sisben_pobl_6" ~ "50-59 años",
-      Grupo_Edad_Num == "sisben_pobl_7" ~ "60-69 años",
-      Grupo_Edad_Num == "sisben_pobl_8" ~ "70-79 años",
-      Grupo_Edad_Num == "sisben_pobl_9" ~ "80-89 años",
-      Grupo_Edad_Num == "sisben_pobl_10" ~ "90+ años",
-      TRUE ~ "No Clasificado"
-    )
-  ) %>%
-  # Asegurar el orden correcto de los factores para el gráfico
-  mutate(
-      Grupo_Edad = factor(Grupo_Edad, levels = unique(Grupo_Edad))
-  )
-
-#Estandarizacion de datos para comparación
-datos_sisben <- datos_sisben %>%
-  # A. Agregamos el conteo de Sisbén a nivel de Grupo_Edad y Clasificacion_PDET
-  group_by(Clasificacion_PDET, Grupo_Edad) %>%
-  summarise(
-    Total_Sisben = sum(Poblacion, na.rm = TRUE),
-    .groups = 'drop'
-  ) %>%
-  
-  # B. Normalizamos dentro de cada Clasificacion_PDET:
-  # Calculamos el % que representa cada Grupo_Edad sobre el Total_Sisben en su clasificación.
-  group_by(Clasificacion_PDET) %>%
-  mutate(
-      Proporcion_Total_Sisben = Total_Sisben / sum(Total_Sisben)
-  ) %>%
-  ungroup() %>%
-  mutate(
-      # Asegurar que el eje Y esté en el orden de los grupos de edad
-      Grupo_Edad = factor(Grupo_Edad, levels = unique(Grupo_Edad)) 
-  )
 ```
 
-```{r}
-#Grafico sisben
-g_sisben_proporcion <- datos_sisben %>%
-  ggplot(aes(x = Grupo_Edad, y = Proporcion_Total_Sisben, fill = Clasificacion_PDET)) +
-  
-  # Barras de conteo, posicionadas lado a lado
-  geom_bar(stat = "identity", position = position_dodge(width = 0.8)) +
-  
-  # Transformar a horizontal
-  coord_flip() +
-  
-  labs(
-    title = "Estructura de Edad de la Población Sisbén (Año 2016)",
-    subtitle = "Proporción de cada grupo sobre el Sisbén Total",
-    y = "Proporción de Población Sisbén Total",
-    x = "Grupo de Edad",
-    fill = "Municipio PDET"
-  ) +
-  
-  # Formatear el eje Y como porcentaje
-  scale_y_continuous(labels = percent) + 
-  
-  theme_minimal() +
-  theme(
-    plot.title = element_text(face = "bold", size = 14),
-    legend.position = "bottom"
-  )
+## 2. Estadísticas Descriptivas inicial
 
-print(g_sisben_proporcion)
-ggsave(
-  filename = "Graficos-tablas/g_sisben_proporcion_final.png", 
-  plot = g_sisben_proporcion,                       
-  width = 10,                                       
-  height = 7,                                        
-  dpi = 300                                          
-)
-```
+PENDIENTE POR HACER CON LAS NUEVAS VARIABLES
 
 ```{r}
-# Creamos una base auxiliar para visualizar la diferencia 
-datos_discapital <- datoscede
+# estadísticas descriptivas de variables
 
-datos_discapital <- datos_discapital%>%
-  # Mantener solo una observación por municipio si la base es tipo panel
-  distinct(codmpio, .keep_all = TRUE) %>% 
-  
-  # Seleccionar solo las variables relevantes y limpiar NAs
-  select(discapital, pdet) %>%
-  filter(!is.na(discapital)) %>%
-  
-  # Asegurar que la clasificación PDET sea factor para el eje X
-  mutate(pdet_clasificacion = factor(pdet, labels = c("No PDET", "PDET")))
+vars_descrip <- c("pobl_tot", "pobl_rur", "indrural", "tasa_sisben", "altura", "discapital", "docen_total", "t_establ", "alumn_med", "s11_ingres", "s11_lectu", "df_ing_propios", "df_gast_inv", "df_desemp_fisc", "homicidios", "extorsion", "ataq_instpol", "actividades_terciarias", "valor agregado", "participacion_terciarias", "vocacion_turistica", "visitantes_extranjeros_no_residentes" )
 
-# 2. Generación del Box Plot
-g_discapital_pdet <- datos_discapital %>%
-  ggplot(aes(x = pdet_clasificacion, y = discapital, fill = pdet_clasificacion)) +
-  
-  # Usar geom_boxplot
-  geom_boxplot(width = 0.5, alpha = 0.7) +
-  
-  # Añadir puntos de datos (jitter) para ver la densidad subyacente (opcional)
-  geom_jitter(width = 0.1, size = 0.5, alpha = 0.2, color = "gray20") +
-  
-  labs(
-    title = "Distancia lineal a la capital del departamento: Municipios PDET vs. No PDET",
-    subtitle = "Comparación de la distribución de la distancia",
-    x = NULL, # Ya se explica en el título/leyenda
-    y = "Distancia a la Capital (km)",
-    fill = "Clasificación"
-  ) +
-  theme_minimal() +
-  theme(
-    plot.title = element_text(face = "bold"),
-    legend.position = "none" # La leyenda es redundante si se usa el eje X para la etiqueta
-  )
-
-print(g_discapital_pdet)
-ggsave(
-  filename = "Graficos-tablas/g_discapital_pdet.png", 
-  plot = g_discapital_pdet,                       
-  width = 10,                                       
-  height = 7,                                        
-  dpi = 300                                          
-)
-```
-
-## Paso 3.1 Estadísticas Descriptivas inicial
-
-```{r}
-# estadísticas descriptivas por grupo PDET
-vars_interes <- c("indrural", "discapital", "df_desemp_fisc",
-                  "homicidios", "t_establ_o")
+vars_interes <- c("indrural", 
+                  "discapital", 
+                  "df_desemp_fisc",
+                  "homicidios", 
+                  "t_establ_o")
 
 nombres_descriptivos <- c(
   "Porcentaje rural",
@@ -514,7 +431,7 @@ nombres_descriptivos <- c(
 )
 
 # Crear tabla vertical con estadísticas
-tabla_aer <- datoscede %>%
+tabla_aer <- base_total %>%
   filter(pdet %in% c(0,1)) %>%
   select(pdet, all_of(vars_interes)) %>%
   pivot_longer(
@@ -808,67 +725,341 @@ tabla_html_visitantes <- tabla_visitantes %>%
 
 # Guardar como HTML
 save_kable(tabla_html_visitantes, "Graficos-tablas/tabla_visitantes.html")
+
+
+#Descriptivas municipios con vocación turística
+
+conteo_municipios <- base_total %>%
+  select(codmpio, pdet, vocacion_turistica) %>%
+  distinct() 
+
+proporcion_pdet_turismo <- conteo_municipios %>%
+  summarise(
+    pdet_con_turismo = sum(pdet == 1 & vocacion_turistica == 1, na.rm = TRUE),
+    total_pdet = sum(pdet == 1, na.rm = TRUE)
+  ) %>%
+  mutate(
+    proporcion_final = (pdet_con_turismo / total_pdet) * 100
+  )
+
+# Muestra el resultado 
+print(proporcion_pdet_turismo)
+
 ```
 
-## Paso 4. Modelo empírico
+## Paso 4. Modelo empírico - VERSION CAMILA
+
+#### Modelo sin PSM con nuevas variables  y aproximación comparada
+
+```{r}
+#Cumplimiento de supuesto tendencias paralelas
+yr_tratado <- 2017
+
+base_total_event <- base_completa %>%
+  mutate(
+    tiempo_rel = ano - yr_tratado
+  )
+
+#Estudio de eventos
+modelo_event_simple <- feols(
+  vocacion_turistica ~ i(tiempo_rel, pdet, ref = -1) + l(tasa_sisben, 1) +
+    l(tasa_homicidios, 1) | codmpio + ano,
+  data = base_total_event,
+  panel.id = ~codmpio + ano, # Solución al error de lag
+  cluster = ~cod_dpto
+)
+
+etable(modelo_event_simple)
+
+#graficamos 
+iplot(
+  modelo_event_simple, 
+  
+  # Etiquetas
+  main = "Estudio de Eventos: Tendencias Paralelas (Modelo Simple)",
+  xlab = "Años Relativos al Tratamiento (t=0 es el año 2017)",
+  ylab = "Efecto Estimado en Vocación Turística",
+  
+  # Estética y Líneas
+  col = "darkblue",
+  ci.lty = 2, # Tipo de línea para el IC (dashed)
+  ci.fill = TRUE, # Rellena el Intervalo de Confianza
+  
+  # Línea horizontal de referencia en y=0 (opcional, suele ser default)
+  ref.line = 0, 
+  
+  # Línea vertical del evento en t=0 (Inicio del tratamiento)
+  vline = 0, # <-- SOLUCIÓN para la línea vertical
+  
+  # Muestra el período pre-tratamiento
+  # La función automáticamente centra el gráfico, pero si deseas enfocar, usa xlim
+  # xlim = c(-4, max(modelo_event_simple$coeftable$tiempo_rel) + 1)
+)
+```
+
+```{r}
+
+#Modelo 1: Diferencias en Diferencias municipios pdet vs no pdet 
+
+#Estandarizamos las llaves
+base_completa <- base_completa %>%
+  mutate(
+    codmpio  = str_pad(as.character(codmpio), 5, pad = "0"),
+    cod_dpto = as.character(cod_dpto)
+  )
+
+#Creamos la variable post tratamiento 
+base_completa <- base_completa %>%
+  mutate(
+    post = as.numeric(ano >= 2017))
+
+#Creamos controles con lag por municipio (antes de tratamiento y evitando endogeneidad)
+base_lags <- base_completa %>%
+  arrange(codmpio, ano) %>%
+  group_by(codmpio) %>%
+  mutate(
+    l_log_pobl_tot      = lag(log1p(pobl_tot), 1),
+    l_log_homicidios    = lag(log1p(homicidios + 1), 1),
+    l_log_extorsion     = lag(log1p(extorsion + 1), 1),
+    l_df_ing_propios    = lag(df_ing_propios, 1),
+    l_df_gast_inv       = lag(df_gast_inv, 1),
+    l_df_desemp_fisc    = lag(df_desemp_fisc, 1),
+    l_log_valor_agregado = lag(log1p(valor_agregado + 1), 1),
+    l_actividades_terciarias = lag(actividades_terciarias, 1),
+    l_participacion_terciarias = lag(participacion_terciarias, 1),
+    l_tasa_sisben       = lag(tasa_sisben, 1),
+    l_docen_total       = lag(docen_total, 1),
+    l_t_establ          = lag(t_establ, 1),
+    l_alumn_med         = lag(alumn_med, 1),
+    l_s11_ingles        = lag(s11_ingles, 1),
+    l_s11_lectu         = lag(s11_lectu, 1)
+  ) %>%
+  ungroup()
+
+#Creamos la variable post tratamiento 
+base_lags <- base_lags %>%
+  mutate(
+    post = as.numeric(ano >= 2017))
+
+#Eliminamos NA
+base_lags <- base_lags %>%
+  filter(!is.na(l_log_pobl_tot))
+
+modelo_1_nopsm <- felm(
+  log1p(visitantes_extranjeros_no_residentes) ~ 
+    pdet * post +
+    l_log_pobl_tot +
+    l_log_homicidios +
+    l_log_extorsion +
+    l_df_ing_propios +
+    l_df_gast_inv +
+    l_df_desemp_fisc +
+    l_log_valor_agregado +
+    l_actividades_terciarias +
+    l_participacion_terciarias +
+    l_tasa_sisben +
+    l_docen_total +
+    l_t_establ +
+    l_alumn_med +
+    l_s11_ingles +
+    l_s11_lectu
+  | codmpio + ano
+  | 0 
+  | cod_dpto,
+  data = base_lags
+)
+
+stargazer(
+  modelo_1_nopsm,
+  title = "Modelo de Diferencias en Diferencias: PDET vs No PDET",
+  type  = "text",  
+  dep.var.labels = "(log+1) visitantes extranjeros no residentes",
+  covariate.labels = c(
+    "PDET", 
+    "Post 2017",
+    "PDET × Post",
+    "Lag log población total",
+    "Lag log homicidios",
+    "Lag log extorsión",
+    "Lag ingresos propios",
+    "Lag gasto inversión",
+    "Lag desempeño fiscal",
+    "Lag log valor agregado",
+    "Lag actividades terciarias",
+    "Lag participación terciarias",
+    "Lag tasa SISBEN",
+    "Lag total docentes",
+    "Lag establecimientos educativos",
+    "Lag alumnos media",
+    "Lag Saber 11 inglés",
+    "Lag Saber 11 lectura"
+  ),
+  keep = c(
+    "pdet", "post", "pdet:post",
+    "l_log_pobl_tot",
+    "l_log_homicidios",
+    "l_log_extorsion",
+    "l_df_ing_propios",
+    "l_df_gast_inv",
+    "l_df_desemp_fisc",
+    "l_log_valor_agregado",
+    "l_actividades_terciarias",
+    "l_participacion_terciarias",
+    "l_tasa_sisben",
+    "l_docen_total",
+    "l_t_establ",
+    "l_alumn_med",
+    "l_s11_ingles",
+    "l_s11_lectu"
+  ),
+  omit.stat = c("f", "ser", "rsq"),
+  no.space = TRUE
+)
+
+#Modelo 2: Diferencias en Diferencias municipios pdet turistico vs no pdet 
+base_lags <- base_lags %>%
+  mutate(
+    tratado_tur = if_else(pdet == 1 & vocacion_turistica == 1, 1L, 0L)
+  )
+
+muestra_modelo2 <- base_lags %>%
+  filter(pdet == 0 | (pdet == 1 & vocacion_turistica == 1))
+
+
+modelo_2 <- felm(
+  log1p(visitantes_extranjeros_no_residentes) ~ 
+    tratado_tur * post +
+    l_log_pobl_tot +
+    l_log_homicidios +
+    l_log_extorsion +
+    l_df_ing_propios +
+    l_df_gast_inv +
+    l_df_desemp_fisc +
+    l_log_valor_agregado +
+    l_actividades_terciarias +
+    l_participacion_terciarias +
+    l_tasa_sisben +
+    l_docen_total +
+    l_t_establ +
+    l_alumn_med +
+    l_s11_ingles +
+    l_s11_lectu
+  | codmpio + ano
+  | 0 
+  | cod_dpto,
+  data = muestra_modelo2
+)
+
+stargazer(
+  modelo_2,
+  title = "Diferencias en diferencias: PDET con vocación turística vs No PDET",
+  type  = "text",
+  dep.var.labels = "log(1 + visitantes extranjeros no residentes)",
+  covariate.labels = c(
+    "Tratamiento (PDET turístico)",
+    "Post 2017",
+    "PDET turístico × Post",
+    "Lag log población total",
+    "Lag log homicidios",
+    "Lag log extorsión",
+    "Lag ingresos propios",
+    "Lag gasto inversión",
+    "Lag desempeño fiscal",
+    "Lag log valor agregado",
+    "Lag actividades terciarias",
+    "Lag participación terciarias",
+    "Lag tasa SISBEN",
+    "Lag total docentes",
+    "Lag establecimientos educativos",
+    "Lag alumnos media",
+    "Lag Saber 11 inglés",
+    "Lag Saber 11 lectura"
+  ),
+  keep = c(
+    "treat_tur_vs_nopdet", "post", "treat_tur_vs_nopdet:post",
+    "l_log_pobl_tot", "l_log_homicidios", "l_log_extorsion",
+    "l_df_ing_propios", "l_df_gast_inv", "l_df_desemp_fisc",
+    "l_log_valor_agregado", "l_actividades_terciarias", "l_participacion_terciarias",
+    "l_tasa_sisben", "l_docen_total", "l_t_establ", "l_alumn_med",
+    "l_s11_ingles", "l_s11_lectu"
+  ),
+  omit.stat = c("f", "ser", "rsq"),
+  no.space = TRUE
+)
+
+#Modelo 3: Diferencias en Diferencias municipios pdet turistico vs pdet no turistico
+muestra_modelo3 <- base_lags %>%
+  mutate(
+    tratado_tur = if_else(pdet == 1 & vocacion_turistica == 1, 1L, 0L)
+  )
+
+muestra_modelo3 <- base_lags %>%
+  filter(pdet == 1)
+
+modelo_3 <- felm(
+  log1p(visitantes_extranjeros_no_residentes) ~ 
+    tratado_tur * post +
+    l_log_pobl_tot +
+    l_log_homicidios +
+    l_log_extorsion +
+    l_df_ing_propios +
+    l_df_gast_inv +
+    l_df_desemp_fisc +
+    l_log_valor_agregado +
+    l_actividades_terciarias +
+    l_participacion_terciarias +
+    l_tasa_sisben +
+    l_docen_total +
+    l_t_establ +
+    l_alumn_med +
+    l_s11_ingles +
+    l_s11_lectu
+  | codmpio + ano          
+  | 0 
+  | cod_dpto,             
+  data = muestra_modelo3
+)
+
+stargazer(
+  modelo_3,
+  title = "DiD: PDET con vocación turística vs PDET sin vocación turística",
+  type  = "text",
+  dep.var.labels = "log(1 + visitantes extranjeros no residentes)",
+  keep = c(
+    "treat_pdet_tur", "post", "treat_pdet_tur:post",
+    "l_log_pobl_tot", "l_log_homicidios", "l_log_extorsion",
+    "l_df_ing_propios", "l_df_gast_inv", "l_df_desemp_fisc",
+    "l_log_valor_agregado", "l_actividades_terciarias",
+    "l_participacion_terciarias", "l_tasa_sisben",
+    "l_docen_total", "l_t_establ", "l_alumn_med",
+    "l_s11_ingles", "l_s11_lectu"
+  ),
+  omit.stat = c("f", "ser", "rsq"),
+  no.space = TRUE
+)
+
+```
+
+#### Modelo con PSM, nuevas variables y aproximación comparada 
+
+```{r}
+#Propensity Score y tendencias paralelas
+base_psm <- base_completa %>%
+  filter(ano == 2016)
+
+datos_emparejados <- datos_emparejados %>%
+  mutate(
+    ano = as.numeric(as.character(ano)),  # asegurar que sea numérica
+    event_time = ano - 2017
+  )
+
+table(datos_emparejados$event_time)
+```
 
 ## Paso 4.1 Propensity Score Matching
 
 ```{r}
-# Revisar la estructura inicial de la base
-str(base_completa)
 
-# Convertir variables turísticas a numéricas y asegurar que pdet sea 0 o 1
-base_completa <- base_completa %>%
-  mutate(
-    across(
-      c(
-        llegadas_pasajeros_nacionales,
-        llegadas_internacionales,
-        visitantes_extranjeros_no_residentes,
-        prestadores_de_servicios_turisticos_activos,
-        establecimientos_de_alojamiento_y_hospedaje,
-        visitantes_pnn
-      ),
-      ~ as.numeric(.)
-    ),
-    pdet = case_when(
-      pdet %in% c(1, "1", "PDET", "Sí", "Si") ~ 1,
-      pdet %in% c(0, "0", "No PDET", "No") ~ 0,
-      TRUE ~ 0  
-    )
-  )
-
-# Revisar estructura después de las conversiones
-str(base_completa)
-
-# Eliminar filas donde pdet está en NA 
-base_completa <- base_completa %>%
-  filter(!is.na(pdet))
-
-# Eliminar filas con NA en variables clave
-base_completa <- base_completa %>%
-  filter(
-    !if_any(
-      c(
-        discapital, altura, indrural, df_desemp_fisc, homicidios,
-        poblacion, t_establ_o, act_primarias, act_secundarias, act_terciarias
-      ),
-      is.na
-    )
-  )
-
-
-base_completa <- base_completa %>%
- mutate(
- pdet = as.numeric(pdet),
- region = as.factor(region),
-    codmpio = as.factor(codmpio),
-    ano = as.factor(ano) 
- )
-# Verificar que pdet solo tenga 0 y 1
-table(base_completa$pdet)
-unique(base_completa$pdet)
 
 # Ejecutar el PSM por región con transformaciones y método "optimal"
 m_caliper <- matchit(
