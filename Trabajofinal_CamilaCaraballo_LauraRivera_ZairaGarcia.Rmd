@@ -780,84 +780,7 @@ save_kable(tabla_pdet_turismo, "Graficos-tablas/tabla_proporcion_pdet_turismo.ht
 ```{r}
 ########//////////////// Prueba 2 Laura
 
-########## OPCIÓN A: manteniendo la variable de vocación turistica 
-yr_tratado <- 2017
-
-# Se prepara la base
-base_total_event <- base_completa %>%
-  mutate(
-    tiempo_rel = ano - yr_tratado,
-    vocacion_turistica = as.numeric(vocacion_turistica) 
-  ) 
-
-# Se define el panel 
-setFixest_estimation(panel.id = ~codmpio + ano)
-
-# 2. ESTIMACIÓN DEL MODELO (Linear Probability Model)
-modelo_event_simple <- feols(
-  vocacion_turistica ~ i(tiempo_rel, pdet, ref = -1) + 
-                       l(tasa_sisben, 1) +             
-                       l(tasa_homicidios, 1) |         
-                       codmpio + ano,                  
-  data = base_total_event,
-  cluster = ~cod_dpto # Clúster a nivel departamento (conservador y correcto para PDET)
-)
-
-# Ver resultados en consola
-print("Resultados del Modelo de Probabilidad Lineal (Event Study):")
-etable(modelo_event_simple, fitstat = c("n", "r2", "ar2"))
-
-# 3. GRAFICAR 
-iplot(modelo_event_simple,
-      main = "Impacto de PDET en Vocación Turística (LPM)",
-      xlab = "Años relativos al tratamiento (2017 = 0)",
-      ylab = "Cambio en Probabilidad de Vocación Turística",
-      col = "firebrick",     # Color de los puntos/líneas
-      ci.lty = 1,            # Línea sólida para el intervalo
-      pt.pch = 20,           # Tipo de punto
-      ref.line = 0)          # Línea horizontal en 0
-
-# Agregamos la línea vertical del evento manualmente después del plot
-abline(v = -0.5, col = "gray", lty = 2) # Ponemos -0.5 para mostrar el corte entre pre y post
-text(x = 0, y = 0, labels = "Inicio PDET", pos = 3, cex = 0.8, col = "gray")
-
-# Para guardar grafico
-
-# 2. Abrir el dispositivo gráfico (La "grabadora")
-png(filename = "Graficos-tablas/Impacto_Visitantes_PDET.png", 
-    width = 2400, height = 1600, res = 300) # Alta resolución para tesis
-
-# 3. Generar el gráfico con iplot (nativo de fixest)
-iplot(modelo_event_simple,
-      main = "Impacto de PDET en Vocación Turística ",
-      xlab = "Años relativos al tratamiento (2017 = 0)",
-      ylab = "Cambio en Probabilidad de Vocación Turística)",
-      col = "firebrick",     # Color rojo oscuro académico
-      pt.pch = 20,           # Puntos sólidos
-      ci.lwd = 1.5,          # Grosor de líneas de confianza
-      ci.lty = 1,            # Línea sólida para IC
-      ref.line = 0)          # Línea horizontal en 0
-
-# 4. Agregar elementos adicionales manualmente (Líneas y Texto)
-grid(nx = NULL, ny = NULL) # Cuadrícula de fondo opcional
-
-# Línea vertical punteada indicando el inicio del tratamiento
-abline(v = -0.5, col = "gray40", lty = 2, lwd = 1.5)
-
-# Texto explicativo
-text(x = -0.5, y = par("usr")[4], # par("usr")[4] es el tope del gráfico
-     labels = "Inicio PDET (2017)", 
-     pos = 1, # Posición debajo de la coordenada
-     cex = 0.9, 
-     col = "gray40")
-
-# 5. Cerrar el dispositivo (Guardar el archivo)
-dev.off()
-
-
-
-
-##### OPCIÓN B: quitando vocacion turisticas y poniendo visitantes_extranjeros_no_residentes
+##### : quitando vocacion turisticas y poniendo visitantes_extranjeros_no_residentes
 
 # ============================
 # 1. Crear año de tratamiento
@@ -1230,20 +1153,6 @@ stargazer(
 #### Modelo con PSM, nuevas variables y aproximación comparada
 
 ```{r}
-#Propensity Score y tendencias paralelas
-base_psm <- base_completa %>%
-  filter(ano == 2016)
-
-datos_emparejados <- datos_emparejados %>%
-  mutate(
-    ano = as.numeric(as.character(ano)),  # asegurar que sea numérica
-    event_time = ano - 2017
-  )
-
-table(datos_emparejados$event_time)
-```
-
-```{r}
 
 #### LAURA 
 
@@ -1300,12 +1209,6 @@ base_lags <- base_completa %>%
   # Filtramos filas con NA en el lag clave que usabas originalmente (mantén consistente)
   filter(!is.na(l_log_pobl_tot))
 
-# Submuestras
-muestra_modelo2 <- base_lags %>%
-  filter(pdet == 0 | (pdet == 1 & vocacion_turistica == 1))
-
-muestra_modelo3 <- base_lags %>%
-  filter(pdet == 1)
 
 # ==============================================================================
 # 2. ESTIMACIONES DID ORIGINALES (SIN PSM) - idénticas a las tuyas
@@ -1430,20 +1333,14 @@ modelo_1_psm <- felm(
 # 3.3 MATCHING MODELO 2 (PDET Turístico vs No PDET)
 # -------------------------------------------------------------------------
 
-muestra_modelo2_psm <- base_panel_psm_m1 %>%
-  mutate(
-    tratado_tur = if_else(pdet == 1 & vocacion_turistica == 1, 1L, 0L)
-  )
-
-muestra_modelo2_psm <- muestra_modelo2_psm %>%
-  filter(pdet == 0 | (pdet == 1 & vocacion_turistica == 1)) %>%
-  mutate(
-    tratado_tur = if_else(pdet == 1 & vocacion_turistica == 1, 1L, 0L)
-  )
-
-# Chequeos
-cat("Dim base_matching_m2:", dim(base_matching_m2), "\n")
-cat("Tabla tratamiento_m2:\n"); table(base_matching_m2$tratamiento_m2, useNA = "ifany")
+base_matching_m2 <- base_lags %>%
+  filter(ano == 2016) %>%
+  # necesitamos codmpio y la variable de tratamiento construida
+  mutate(tratamiento_m2 = if_else(pdet == 1 & vocacion_turistica == 1, 1L, 0L)) %>%
+  select(codmpio, tratamiento_m2, l_log_pobl_tot, l_indrural,
+         l_tasa_urbanizacion, l_tasa_sisben, l_tasa_homicidios,
+         l_tasa_extorsion, l_df_ing_propios, l_valor_agregado_pc, l_s11_lectu) %>%
+  na.omit()
 
 set.seed(456)
 match_out_m2 <- matchit(
@@ -1472,7 +1369,6 @@ base_panel_psm_m2 <- base_lags %>%
 
 stopifnot(sum(is.na(base_panel_psm_m2$weights)) == 0)
 
-#Modelo 2 / 
 modelo_2_psm <- felm(
   log1p(visitantes_extranjeros_no_residentes) ~ 
     tratado_tur * post + 
@@ -1482,13 +1378,13 @@ modelo_2_psm <- felm(
     l_valor_agregado_pc + l_participacion_terciarias +
     l_tasa_docentes + l_tasa_alumnos_med + l_s11_ingles + l_log_t_establ + l_s11_lectu
   | codmpio + ano | 0 | cod_dpto,
-  data = muestra_modelo2_psm,
-  weights = muestra_modelo2_psm$weights
+  data = base_panel_psm_m2,
+  weights = base_panel_psm_m2$weights
 )
-
 # -------------------------------------------------------------------------
 # 3.4 MATCHING MODELO 3 (Dentro de PDET: Turístico vs No Turístico)
 # -------------------------------------------------------------------------
+
 base_matching_m3 <- base_lags %>%
   filter(ano == 2016 & pdet == 1) %>%
   select(codmpio, vocacion_turistica, l_log_pobl_tot, l_indrural,
@@ -1498,6 +1394,47 @@ base_matching_m3 <- base_lags %>%
 
 cat("Dim base_matching_m3:", dim(base_matching_m3), "\n")
 cat("Tabla vocacion_turistica (en PDET):\n"); table(base_matching_m3$vocacion_turistica, useNA = "ifany")
+
+set.seed(789)
+match_out_m3 <- matchit(
+  formula = vocacion_turistica ~ l_log_pobl_tot + l_indrural + l_tasa_urbanizacion + 
+            l_tasa_sisben + l_tasa_homicidios + l_tasa_extorsion + 
+            l_df_ing_propios + l_valor_agregado_pc + l_s11_lectu,
+  data = base_matching_m3,
+  method = "nearest",
+  distance = "logit",
+  ratio = 1,
+  replace = FALSE
+)
+
+print(summary(match_out_m3))
+bal_m3 <- bal.tab(match_out_m3, un = TRUE)
+print(bal_m3)
+love.plot(bal_m3, threshold = .1, main = "Love plot: M3 (PDET tur vs PDET no tur)")
+
+datos_matched_m3 <- match.data(match_out_m3) %>%
+  dplyr::select(codmpio, weights) %>%
+  distinct(codmpio, .keep_all = TRUE)
+
+base_panel_psm_m3 <- base_lags %>%
+  filter(codmpio %in% datos_matched_m3$codmpio) %>%
+  left_join(datos_matched_m3, by = "codmpio")
+
+stopifnot(sum(is.na(base_panel_psm_m3$weights)) == 0)
+
+modelo_3_psm <- felm(
+  log1p(visitantes_extranjeros_no_residentes) ~ 
+    pdet_tur_dummy * post + 
+    l_log_pobl_tot + l_indrural + l_tasa_urbanizacion + l_tasa_sisben +
+    l_tasa_homicidios + l_tasa_extorsion + l_tasa_ataq_instpol + 
+    l_df_ing_propios + l_df_gast_inv + l_df_desemp_fisc +
+    l_valor_agregado_pc + l_participacion_terciarias +
+    l_tasa_docentes + l_tasa_alumnos_med + l_s11_ingles + l_log_t_establ + l_s11_lectu
+  | codmpio + ano | 0 | cod_dpto,
+  data = base_panel_psm_m3,
+  weights = base_panel_psm_m3$weights
+)
+
 
 set.seed(789)
 match_out_m3 <- matchit(
@@ -1564,8 +1501,8 @@ stargazer(
     "PDET (Tratamiento)", 
     "Tratado Turístico (M2)", 
     "PDET Turístico (M3)",
-    "Post 2017",
-    "PDET × Post (Efecto DiD M1)", 
+    "PDET × Post",
+    "POST 2017", 
     "Tratado Turístico × Post (Efecto DiD M2)", 
     "PDET Turístico × Post (Efecto DiD M3)",
     "Lag log población total",
@@ -1604,7 +1541,11 @@ stargazer(
   ),
   no.space = TRUE
 )
+# Define la ruta y nombre del archivo
+ruta_archivo <- "Graficos-tablas/tabla_modelos_sinpsm.html"
 
+# Guardar la tabla HTML
+cat(tabla_modelos_psm, file = ruta_archivo)
 # ==============================================================================
 # 5. DIAGNÓSTICOS ADICIONALES OPCIONALES
 # ==============================================================================
@@ -1633,7 +1574,7 @@ tabla_modelos_sinpsm <- stargazer(
   modelos_sin_psm,
   
   title = "Tabla 1: Resultados DiD sin PSM (Efectos Fijos)",
-  type = "text", 
+  type = "latex", 
   dep.var.labels = "log(1 + Visitantes Extranjeros)",
   model.numbers = FALSE,
   column.labels = c("Modelo 1", "Modelo 2", "Modelo 3"),
@@ -1641,13 +1582,13 @@ tabla_modelos_sinpsm <- stargazer(
   # --- ETIQUETAS DE COEFICIENTES Y ORDEN ---
   covariate.labels = c(
     # 1. INTERACCIONES (Efecto DiD)
-    "PDET × Post (M1)", 
-    "Tratado Turístico × Post (M2, M3)",
+    "PDET  (M1)", 
+    "Tratado Turístico (M2, M3)",
     
     # 2. VARIABLES BASE
     "PDET (M1)",
     "Tratado Turístico (M2, M3)",
-    "Post 2017",
+    "PDET × Post",
     
     # 3. CONTROLES LAGGED
     "Lag log población total", "Lag índice ruralidad", "Lag tasa urbanización",
@@ -1684,6 +1625,12 @@ tabla_modelos_sinpsm <- stargazer(
   no.space = TRUE
 )
 
+# Define la ruta y nombre del archivo
+ruta_archivo <- "Graficos-tablas/tabla_modelos_sinpsm.tex"
+
+# Guardar la tabla HTML
+cat(tabla_modelos_sinpsm, file = ruta_archivo)
+
 #Modelos con psm
 
 modelos_con_psm <- list(
@@ -1696,7 +1643,7 @@ tabla_modelos_psm <- stargazer(
   modelos_con_psm,
   
   title = "Tabla 2: Resultados DiD con PSM (Ponderados)",
-  type = "text", 
+  type = "latex", 
   dep.var.labels = "log(1 + Visitantes Extranjeros)",
   model.numbers = FALSE,
   column.labels = c("Modelo 1", "Modelo 2", "Modelo 3"),
@@ -1704,13 +1651,13 @@ tabla_modelos_psm <- stargazer(
   # --- ETIQUETAS DE COEFICIENTES Y ORDEN ---
   covariate.labels = c(
     # 1. INTERACCIONES (Efecto DiD)
-    "PDET × Post (M1)", 
-    "Tratado Turístico × Post (M2, M3)",
+    "PDET  (M1)", 
+    "Tratado Turístico (M2, M3)",
     
     # 2. VARIABLES BASE
     "PDET (M1)",
     "Tratado Turístico (M2, M3)",
-    "Post 2017",
+    "PDET x Post",
     
     # 3. CONTROLES LAGGED
     "Lag log población total", "Lag índice ruralidad", "Lag tasa urbanización",
@@ -1747,6 +1694,13 @@ tabla_modelos_psm <- stargazer(
   ),
   no.space = TRUE
 )
+
+# Define la ruta y nombre del archivo
+ruta_archivo <- "Graficos-tablas/tabla_modelos_psm.tex"
+
+# Guardar la tabla HTML
+cat(tabla_modelos_psm, file = ruta_archivo)
+
 ```
 
 \
