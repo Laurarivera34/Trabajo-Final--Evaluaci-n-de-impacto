@@ -412,49 +412,316 @@ write.csv(base_completa,
 ## 2. Estadísticas Descriptivas con la base completa (Falta)
 
 ```{r}
-# estadísticas descriptivas de variables
-
-vars_descrip <- c("pobl_tot", "pobl_rur", "indrural", "tasa_sisben", "altura", "discapital", "docen_total", "t_establ", "alumn_med", "s11_ingres", "s11_lectu", "df_ing_propios", "df_gast_inv", "df_desemp_fisc", "homicidios", "extorsion", "ataq_instpol", "actividades_terciarias", "valor agregado", "participacion_terciarias", "vocacion_turistica", "visitantes_extranjeros_no_residentes" )
-
-vars_interes <- c("indrural", 
-                  "discapital", 
-                  "df_desemp_fisc",
-                  "homicidios", 
-                  "t_establ_o")
-
-nombres_descriptivos <- c(
-  "Porcentaje rural",
-  "Porcentaje en capital",
-  "Desempeño fiscal (%)",
-  "Número de homicidios",
-  "Establecimientos oficiales"
+vars_interes <- c(
+  "pobl_tot",
+  "indrural",
+  "tasa_urbanizacion",
+  "tasa_sisben",
+  "tasa_homicidios",
+  "tasa_extorsion",
+  "tasa_ataq_instpol",
+  "df_ing_propios",
+  "df_gast_inv",
+  "df_desemp_fisc",
+  "valor_agregado_pc",
+  "participacion_terciarias",
+  "tasa_docentes",
+  "tasa_alumnos_med",
+  "s11_ingles",
+  "t_establ",
+  "s11_lectu",
+  "llegadas_pasajeros_nacionales",
+  "llegadas_internacionales",
+  "visitantes_extranjeros_no_residentes",
+  "visitantes_pnn",
+  "prestadores_de_servicios_turisticos_activos",
+  "establecimientos_de_alojamiento_y_hospedaje"
 )
 
-# Crear tabla vertical con estadísticas
-tabla_aer <- base_total %>%
+nombres_descriptivos <- c(
+  "Población total",
+  "Porcentaje rural",
+  "Tasa de urbanización",
+  "Tasa SISBEN",
+  "Tasa de homicidios",
+  "Tasa de extorsión",
+  "Tasa ataques a instituciones",
+  "Ingresos propios",
+  "Gasto de inversión",
+  "Desempeño fiscal",
+  "Valor agregado per cápita",
+  "Participación sector terciario",
+  "Tasa de docentes",
+  "Tasa alumnos educación media",
+  "Saber 11 Inglés",
+  "Establecimientos oficiales",
+  "Saber 11 Lectura",
+  "Llegadas pasajeros nacionales",
+  "Llegadas internacionales",
+  "Visitantes extranjeros no residentes",
+  "Visitantes Parques naturales",
+  "Prestadores servicios turisticos activos",
+  "Establecimientos de alojamiento y hospedaje"
+)
+
+# Graficas
+nombres_descriptivos_dicc <- c(
+  "pobl_tot" = "Población total",
+  "indrural" = "Porcentaje rural",
+  "tasa_urbanizacion" = "Tasa de urbanización",
+  "tasa_sisben" = "Tasa SISBEN",
+  "tasa_homicidios" = "Tasa de homicidios",
+  "tasa_extorsion" = "Tasa de extorsión",
+  "tasa_ataq_instpol" = "Tasa ataques a instituciones",
+  "df_ing_propios" = "Ingresos propios",
+  "df_gast_inv" = "Gasto de inversión",
+  "df_desemp_fisc" = "Desempeño fiscal",
+  "valor_agregado_pc" = "Valor agregado per cápita",
+  "participacion_terciarias" = "Participación sector terciario",
+  "tasa_docentes" = "Tasa de docentes",
+  "tasa_alumnos_med" = "Tasa alumnos educación media",
+  "s11_ingles" = "Saber 11 Inglés",
+  "t_establ" = "Establecimientos oficiales",
+  "s11_lectu" = "Saber 11 Lectura",
+  
+  # De turismo
+  "llegadas_pasajeros_nacionales" = "Llegadas pasajeros nacionales",
+  "llegadas_internacionales" = "Llegadas internacionales",
+  "visitantes_extranjeros_no_residentes" = "Visitantes extranjeros no residentes",
+  "visitantes_pnn" = "Visitantes Parques naturales",
+  "prestadores_de_servicios_turisticos_activos" = "Prestadores servicios turísticos activos",
+  "establecimientos_de_alojamiento_y_hospedaje" = "Establecimientos de alojamiento y hospedaje"
+)
+
+# Barras
+plot_means <- function(df, vars, titulo){
+
+  df %>%
+    select(pdet, all_of(vars)) %>%
+    pivot_longer(cols = all_of(vars), 
+                 names_to = "variable", 
+                 values_to = "valor") %>%
+    mutate(variable = nombres_descriptivos_dicc[variable]) %>%
+    group_by(pdet, variable) %>%
+    summarise(media = mean(valor, na.rm = TRUE), .groups = "drop") %>%
+    ggplot(aes(x = variable, y = media, fill = factor(pdet))) +
+    geom_col(position = "dodge") +
+    scale_fill_manual(values = c("#1f78b4","#e31a1c"),
+                      labels = c("No PDET","PDET")) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    labs(title = titulo, x = "Variable", y = "Media")
+}
+
+graf_violencia <- plot_means(base_completa,
+           c("tasa_homicidios","tasa_extorsion","tasa_ataq_instpol"),
+           "Variables de Violencia")
+
+graf_econo <- plot_means(base_completa, 
+             c("df_ing_propios","df_gast_inv","df_desemp_fisc","valor_agregado_pc"),
+             "Variables Económicas")
+
+graf_social <- plot_means(base_completa, 
+         c("tasa_urbanizacion","tasa_sisben"),
+         "Variables Sociales")
+
+graf_turismo <- plot_means(base_completa, 
+                           c("llegadas_pasajeros_nacionales",  "llegadas_internacionales",
+  "visitantes_extranjeros_no_residentes",
+  "visitantes_pnn"), "Variables de Turismo")
+
+# Boxplot
+plot_box <- function(df, vars, titulo){
+
+  df %>%
+    select(pdet, all_of(vars)) %>%
+    pivot_longer(cols = all_of(vars),
+                 names_to = "variable",
+                 values_to = "valor") %>%
+    mutate(variable = nombres_descriptivos_dicc[variable],
+           pdet = factor(pdet, labels = c("No PDET", "PDET"))) %>%
+    ggplot(aes(x = variable, y = valor, fill = pdet)) +
+    geom_boxplot(alpha = 0.7, outlier.size = 1.5) +
+    scale_y_continuous(labels = scales::comma) +
+    scale_fill_manual(values = c("#1f78b4", "#e31a1c")) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    labs(title = titulo, x = "Variable", y = "Valor", fill = "Grupo")
+}
+
+graf_box_violencia <- plot_box(base_completa,
+           c("tasa_homicidios","tasa_extorsion","tasa_ataq_instpol"),
+           "Distribución de Variables de Violencia")
+
+graf_box_econo <- plot_box(base_completa, 
+             c("df_ing_propios","df_gast_inv","df_desemp_fisc","valor_agregado_pc"),
+             "Distribución de Variables Económicas")
+
+graf_box_social <- plot_box(base_completa, 
+         c("tasa_urbanizacion","tasa_sisben"),
+         "Distribución de Variables Sociales")
+
+graf_box_turismo <- plot_box(base_completa, 
+                           c("llegadas_pasajeros_nacionales",
+                             "llegadas_internacionales",
+                             "visitantes_extranjeros_no_residentes",
+                             "visitantes_pnn"),
+                           "Distribución de Variables de Turismo")
+
+# Lista de gráficos
+graficos_estadisticas <- list(
+  graf_violencia,
+  graf_econo,
+  graf_social,
+  graf_turismo,
+  graf_box_violencia,
+  graf_box_econo,
+  graf_box_social,
+  graf_box_turismo
+)
+
+# Nombres de archivo correspondientes
+nombres_archivo <- c(
+  "Graficos-tablas/grafico_barras_violencia.png",
+  "Graficos-tablas/grafico_barras_economicas.png",
+  "Graficos-tablas/grafico_barras_sociales.png",
+  "Graficos-tablas/grafico_barras_turismo.png",
+  "Graficos-tablas/grafico_boxplot_violencia.png",
+  "Graficos-tablas/grafico_boxplot_economicas.png",
+  "Graficos-tablas/grafico_boxplot_sociales.png",
+  "Graficos-tablas/grafico_boxplot_turismo.png"
+)
+
+# Guardar cada gráfico
+for(i in seq_along(graficos_estadisticas)){
+  ggsave(
+    filename = nombres_archivo[i],
+    plot = graficos_estadisticas[[i]],
+    width = 10,
+    height = 7,
+    dpi = 300
+  )
+}
+
+
+# barras pdet
+plot_means_pdet <- function(df, vars, titulo){
+
+  df %>%
+    filter(pdet == 1) %>%                              
+    select(all_of(vars)) %>%                          
+    pivot_longer(cols = all_of(vars), 
+                 names_to = "variable", 
+                 values_to = "valor") %>%
+    mutate(variable = nombres_descriptivos_dicc[variable]) %>%
+    group_by(variable) %>%
+    summarise(media = mean(valor, na.rm = TRUE), .groups = "drop") %>%
+    ggplot(aes(x = variable, y = media)) +
+    geom_col(fill = "#1f78b4") +                       # ← un solo color para PDET
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    labs(title = paste0(titulo, " (Solo Municipios PDET)"),
+         x = "Variable", y = "Media")
+}
+
+graf_violencia_pdet <- plot_means_pdet(base_completa,
+           c("tasa_homicidios","tasa_extorsion","tasa_ataq_instpol"),
+           "Variables de Violencia")
+
+graf_econo_pdet <- plot_means_pdet(base_completa, 
+             c("df_ing_propios","df_gast_inv","df_desemp_fisc","valor_agregado_pc"),
+             "Variables Económicas")
+
+graf_social_pdet <- plot_means_pdet(base_completa, 
+         c("tasa_urbanizacion","tasa_sisben"),
+         "Variables Sociales")
+
+graf_turismo_pdet <- plot_means_pdet(base_completa, 
+                           c("llegadas_pasajeros_nacionales",  "llegadas_internacionales",
+  "visitantes_extranjeros_no_residentes",
+  "visitantes_pnn"), "Variables de Turismo")
+
+
+# Boxplot pdet
+plot_box_pdet <- function(df, vars, titulo){
+
+  df %>%
+    filter(pdet == 1) %>%                             
+    select(all_of(vars)) %>%
+    pivot_longer(cols = all_of(vars),
+                 names_to = "variable",
+                 values_to = "valor") %>%
+    mutate(variable = nombres_descriptivos_dicc[variable]) %>%
+    ggplot(aes(x = variable, y = valor)) +
+    geom_boxplot(fill = "#1f78b4", alpha = 0.7, outlier.size = 1.5) +
+    scale_y_continuous(labels = scales::comma) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    labs(title = paste0(titulo, " (Solo Municipios PDET)"),
+         x = "Variable", y = "Valor")
+}
+
+graf_box_violencia_pdet <- plot_box_pdet(base_completa,
+           c("tasa_homicidios","tasa_extorsion","tasa_ataq_instpol"),
+           "Distribución de Variables de Violencia")
+
+
+graf_box_econo_pdet <- plot_box_pdet(base_completa, 
+             c("df_ing_propios","df_gast_inv","df_desemp_fisc","valor_agregado_pc"),
+             "Distribución de Variables Económicas")
+
+graf_box_social_pdet <- plot_box_pdet(base_completa, 
+         c("tasa_urbanizacion","tasa_sisben"),
+         "Distribución de Variables Sociales")
+
+graf_box_turismo_pdet <- plot_box_pdet(base_completa, 
+                           c("llegadas_pasajeros_nacionales",
+                             "llegadas_internacionales",
+                             "visitantes_extranjeros_no_residentes",
+                             "visitantes_pnn"),
+                           "Distribución de Variables de Turismo")
+
+vars_graficos <- c(
+  # Violencia
+  "tasa_homicidios","tasa_extorsion","tasa_ataq_instpol",
+  # Económicas
+  "df_ing_propios","df_gast_inv","df_desemp_fisc","valor_agregado_pc",
+  # Sociales
+  "tasa_urbanizacion","tasa_sisben",
+  # Turismo
+  "llegadas_pasajeros_nacionales","llegadas_internacionales",
+  "visitantes_extranjeros_no_residentes","visitantes_pnn"
+)
+
+nombres_descriptivos_tabla <- nombres_descriptivos_dicc[vars_graficos]
+
+tabla_aer <- base_completa %>%
   filter(pdet %in% c(0,1)) %>%
-  select(pdet, all_of(vars_interes)) %>%
+  select(pdet, all_of(vars_graficos)) %>%
   pivot_longer(
-    cols = all_of(vars_interes),
+    cols = all_of(vars_graficos),
     names_to = "variable",
     values_to = "valor"
   ) %>%
   group_by(pdet, variable) %>%
   summarise(
     Min = min(valor, na.rm = TRUE),
-    Max = max(valor, na.rm = TRUE),
+    Q1 = quantile(valor, 0.25, na.rm = TRUE),
     Promedio = mean(valor, na.rm = TRUE),
+    Mediana = median(valor, na.rm = TRUE),
+    Q3 = quantile(valor, 0.75, na.rm = TRUE),
+    Max = max(valor, na.rm = TRUE),
+    Desviacion = sd(valor, na.rm = TRUE),
     .groups = "drop"
   ) %>%
   pivot_wider(
     names_from = pdet,
-    values_from = c(Min, Max, Promedio),
+    values_from = c(Min, Q1, Promedio, Mediana, Q3, Max, Desviacion),
     names_prefix = "pdet_"
   ) %>%
-  # Reemplazar nombres de variables por descriptivos
-  mutate(variable = nombres_descriptivos)
+  mutate(variable = nombres_descriptivos_tabla)
 
-# Crear tabla AER
+# Crear tabla HTML
 tabla_html <- tabla_aer %>%
   kable(
     caption = "Estadísticas descriptivas por municipio PDET y No PDET",
@@ -462,272 +729,20 @@ tabla_html <- tabla_aer %>%
     format = "html",
     col.names = c(
       "Variable",
-      "Min (No PDET)", "Max (No PDET)", "Promedio (No PDET)",
-      "Min (PDET)", "Max (PDET)", "Promedio (PDET)"
+      "Min (No PDET)", "Q1 (No PDET)", "Promedio (No PDET)", "Mediana (No PDET)",
+      "Q3 (No PDET)", "Max (No PDET)", "Desv. (No PDET)",
+      "Min (PDET)", "Q1 (PDET)", "Promedio (PDET)", "Mediana (PDET)",
+      "Q3 (PDET)", "Max (PDET)", "Desv. (PDET)"
     )
   ) %>%
   kable_classic(full_width = FALSE, html_font = "Cambria")
 
-# guardar 
-save_kable(tabla_html, "Graficos-tablas/tabla_estadisticas_pdet.html")
-
-# análisis univariado
-grafico_pdet <- datoscede %>%
-  filter(pdet %in% c(0,1)) %>%
-  pivot_longer(cols = all_of(vars_interes), names_to = "variable", values_to = "valor") %>%
-  mutate(variable = factor(variable, 
-                           levels = vars_interes, 
-                           labels = nombres_descriptivos)) %>%
-  ggplot(aes(x = factor(pdet), y = valor, fill = factor(pdet))) +
-  geom_boxplot() +
-  facet_wrap(~variable, scales = "free") +
-  scale_fill_manual(values = c("0" = "lightblue", "1" = "salmon"), labels = c("No PDET", "PDET")) +
-  labs(x = "Grupo PDET", y = "Valor", fill = "Grupo") +
-  theme_minimal()
-
-# Guardar el gráfico
-ggsave("Graficos-tablas/grafico_boxplot_pdet.png", grafico_pdet, width = 10, height = 7, dpi = 300)
-
-# Tabla de estadísticas descriptivas de homicidios por grupo PDET
-tabla_homicidios <- datoscede %>%
-  filter(!is.na(pdet), !is.na(homicidios)) %>%
-  group_by(codmpio, pdet) %>%                     # 🔹 agrupa por municipio y grupo PDET
-  summarise(homicidios_total = sum(homicidios, na.rm = TRUE), .groups = "drop") %>%
-  group_by(pdet) %>%
-  summarise(
-    N_municipios = n(),                            # ahora sí cuenta municipios únicos
-    Min = min(homicidios_total),
-    Q1 = quantile(homicidios_total, 0.25),
-    Promedio = mean(homicidios_total),
-    Mediana = median(homicidios_total),
-    Q3 = quantile(homicidios_total, 0.75),
-    Max = max(homicidios_total),
-    Desviación = sd(homicidios_total)
-  ) %>%
-  mutate(Grupo = ifelse(pdet == 1, "PDET", "No PDET")) %>%
-  select(Grupo, everything(), -pdet)
-
-# Tabla HTML
-tabla_html <- tabla_homicidios %>%
-  kable(
-    caption = "Estadísticas descriptivas de homicidios por grupo PDET (nivel municipal)",
-    digits = 2,
-    col.names = c("Grupo", "N", "Mínimo", "1er Cuartil", "Promedio", "Mediana", "3er Cuartil", "Máximo", "Desviación estándar")
-  ) %>%
-  kable_classic(full_width = FALSE, html_font = "Cambria")
-
-# Guardar como HTML
-save_kable(tabla_html, "Graficos-tablas/tabla_homicidios.html")
-```
-
-```{r}
-# Análisis univariado del índice de ruralidad por grupo pdet
-# Limpieza de datos 
-datoscede <- datoscede %>%
-  mutate(codmpio = as.integer(codmpio)) %>%       
-  distinct(codmpio, pdet, indrural, .keep_all = TRUE)
-
-# Consolidar base a nivel municipal
-datoscede_mpio <- datoscede %>%
-  filter(!is.na(codmpio)) %>%
-  group_by(codmpio) %>%
-  summarise(
-    pdet = max(pdet, na.rm = TRUE),
-    indrural = mean(indrural, na.rm = TRUE),
-    .groups = "drop"
-  ) %>%
-  mutate(pdet = ifelse(is.infinite(pdet), 0, pdet))
-
-# Revisar número de municipios PDET
-conteo <- datoscede_mpio %>% count(pdet)
-print(conteo)
-
-# Tabla descriptiva
-tabla_indrural <- datoscede_mpio %>%
-  group_by(pdet) %>%
-  summarise(
-    Municipios = n(),
-    Con_dato = sum(!is.na(indrural)),
-    Promedio = mean(indrural, na.rm = TRUE),
-    Mediana = median(indrural, na.rm = TRUE),
-    Desviación_estándar = sd(indrural, na.rm = TRUE),
-    Mínimo = min(indrural, na.rm = TRUE),
-    `1er_Cuartil` = quantile(indrural, 0.25, na.rm = TRUE),
-    `3er_Cuartil` = quantile(indrural, 0.75, na.rm = TRUE),
-    Máximo = max(indrural, na.rm = TRUE),
-    .groups = "drop"
-  ) %>%
-  mutate(Grupo = ifelse(pdet == 1, "PDET", "No PDET")) %>%
-  select(Grupo, everything(), -pdet)
-
-# Exportar tabla descriptiva a HTML 
-tabla_html <- tabla_indrural %>%
-  kable(
-    caption = "Estadísticas descriptivas del índice de ruralidad por grupo PDET",
-    digits = 3,
-    col.names = c("Grupo", "Municipios", "Con dato", "Promedio", "Mediana",
-                  "Desviación estándar", "Mínimo", "1er Cuartil", "3er Cuartil", "Máximo")
-  ) %>%
-  kable_classic(full_width = FALSE, html_font = "Cambria")
-
-# Guardar tabla HTML
-save_kable(tabla_html, file = "Graficos-tablas/tabla_indrural.html")
-
-# Gráfico comparativo 
-grafico_indrural <- datoscede_mpio %>%
-  mutate(Grupo = ifelse(pdet == 1, "PDET", "No PDET")) %>%
-  ggplot(aes(x = Grupo, y = indrural, fill = Grupo)) +
-  geom_boxplot(alpha = 0.7, width = 0.6) +
-  scale_fill_manual(values = c("skyblue", "seagreen3")) +
-  labs(
-    title = "Distribución del índice de ruralidad por grupo PDET",
-    x = "",
-    y = "Índice de ruralidad"
-  ) +
-  theme_minimal(base_family = "Cambria") +
-  theme(legend.position = "none")
-
-# Guardar gráfico
-ggsave("Graficos-tablas/grafico_indrural.png", grafico_indrural, width = 7, height = 5, dpi = 300)
-
-```
-
-```{r}
-# estadísticas descriptivas 
-vars_interes_compl <- c("indrural", "discapital", "df_desemp_fisc",
-                  "homicidios", "t_establ_o", "act_primarias", 
-                  "act_secundarias", "act_terciarias",
-                  "visitantes_extranjeros_no_residentes")
-
-nombres_descriptivos_compl <- c(
-  "Porcentaje rural",
-  "Porcentaje en capital",
-  "Desempeño fiscal (%)",
-  "Número de homicidios",
-  "Establecimientos oficiales",
-  "Actividades primarias",
-  "Actividades secundarias",
-  "Actividades terciarias",
-  "Visitantes extranjeros no residentes"
-)
-
-# Crear tabla vertical con estadísticas
-tabla_aer_compl <- base_completa %>%
-  filter(pdet %in% c(0,1)) %>%
-  select(pdet, all_of(vars_interes_compl)) %>%
-  pivot_longer(
-    cols = all_of(vars_interes_compl),
-    names_to = "variable",
-    values_to = "valor"
-  ) %>%
-  group_by(pdet, variable) %>%
-  summarise(
-    Min = min(valor, na.rm = TRUE),
-    Max = max(valor, na.rm = TRUE),
-    Promedio = mean(valor, na.rm = TRUE),
-    .groups = "drop"
-  ) %>%
-  pivot_wider(
-    names_from = pdet,
-    values_from = c(Min, Max, Promedio),
-    names_prefix = "pdet_"
-  ) %>%
-  # Reemplazar nombres de variables por descriptivos
-  mutate(variable = nombres_descriptivos_compl)
-
-# Crear tabla AER
-tabla_html_compl <- tabla_aer_compl %>%
-  kable(
-    caption = "Estadísticas descriptivas por municipio PDET y No PDET",
-    digits = 2,
-    format = "html",
-    col.names = c(
-      "Variable",
-      "Min (No PDET)", "Max (No PDET)", "Promedio (No PDET)",
-      "Min (PDET)", "Max (PDET)", "Promedio (PDET)"
-    )
-  ) %>%
-  kable_classic(full_width = FALSE, html_font = "Cambria")
-
-# guardar 
-save_kable(tabla_html_compl, "Graficos-tablas/tabla_estadisticas_complet_pdet.html")
-
-# análisis univariado
-grafico_pdet_compl <- base_completa %>%
-  filter(pdet %in% c(0,1)) %>%
-  pivot_longer(cols = all_of(vars_interes_compl), names_to = "variable", values_to = "valor") %>%
-  mutate(variable = factor(variable, 
-                           levels = vars_interes_compl, 
-                           labels = nombres_descriptivos_compl)) %>%
-  ggplot(aes(x = factor(pdet), y = valor, fill = factor(pdet))) +
-  geom_boxplot() +
-  facet_wrap(~variable, scales = "free") +
-  scale_fill_manual(values = c("0" = "lightblue", "1" = "salmon"), labels = c("No PDET", "PDET")) +
-  labs(x = "Grupo PDET", y = "Valor", fill = "Grupo") +
-  theme_minimal()
-
-# Guardar el gráfico
-ggsave("Graficos-tablas/grafico_compl_boxplot_pdet.png", grafico_pdet_compl, width = 10, height = 7, dpi = 300)
-
-# Gráfico de Violín (Violin Plot)
-grafico_pdet_violin <- base_completa %>%
-  filter(pdet %in% c(0,1)) %>%
-  pivot_longer(cols = all_of(vars_interes_compl), names_to = "variable", values_to = "valor") %>%
-  mutate(variable = factor(variable,
-                           levels = vars_interes_compl,
-                           labels = nombres_descriptivos_compl)) %>%
-  ggplot(aes(x = factor(pdet), y = valor, fill = factor(pdet))) +
-  geom_violin(trim = TRUE) + # Agrega la capa de violín
-  # Puedes añadir un boxplot o puntos para ver la mediana/cuartiles
-  geom_boxplot(width = 0.1, color = "black", alpha = 0.5) +
-  facet_wrap(~variable, scales = "free") +
-  scale_fill_manual(values = c("0" = "lightblue", "1" = "salmon"), labels = c("No PDET", "PDET")) +
-  labs(
-    x = "Grupo PDET", 
-    y = "Valor", 
-    fill = "Grupo", 
-    title = "Comparación de Distribuciones por Grupo PDET (Gráfico de Violín)"
-  ) +
-  theme_minimal()
-
-# Guardar el gráfico
-ggsave("Graficos-tablas/grafico_compl_violin_pdet.png", grafico_pdet_violin, width = 10, height = 7, dpi = 300)
-
-# Tabla de estadísticas descriptivas de homicidios por grupo PDET
-tabla_visitantes <- base_completa %>%
-  filter(!is.na(pdet), !is.na(visitantes_extranjeros_no_residentes)) %>%
-  group_by(codmpio, pdet) %>%                     # agrupa por municipio y grupo PDET
-  summarise(visitantes_extranjeros_no_residentes_total = sum(visitantes_extranjeros_no_residentes, na.rm = TRUE), .groups = "drop") %>%
-  group_by(pdet) %>%
-  summarise(
-    N_municipios = n(),                            # ahora sí cuenta municipios únicos
-    Min = min(visitantes_extranjeros_no_residentes_total),
-    Q1 = quantile(visitantes_extranjeros_no_residentes_total, 0.25),
-    Promedio = mean(visitantes_extranjeros_no_residentes_total),
-    Mediana = median(visitantes_extranjeros_no_residentes_total),
-    Q3 = quantile(visitantes_extranjeros_no_residentes_total, 0.75),
-    Max = max(visitantes_extranjeros_no_residentes_total),
-    Desviación = sd(visitantes_extranjeros_no_residentes_total)
-  ) %>%
-  mutate(Grupo = ifelse(pdet == 1, "PDET", "No PDET")) %>%
-  select(Grupo, everything(), -pdet)
-
-# Tabla HTML
-tabla_html_visitantes <- tabla_visitantes %>%
-  kable(
-    caption = "Estadísticas descriptivas de visitantes extranjeros no residentes por grupo PDET (nivel municipal)",
-    digits = 2,
-    col.names = c("Grupo", "N", "Mínimo", "1er Cuartil", "Promedio", "Mediana", "3er Cuartil", "Máximo", "Desviación estándar")
-  ) %>%
-  kable_classic(full_width = FALSE, html_font = "Cambria")
-
-# Guardar como HTML
-save_kable(tabla_html_visitantes, "Graficos-tablas/tabla_visitantes.html")
-
+# Guardar tabla
+save_kable(tabla_html, "Graficos-tablas/tabla_final_estadisticas_graficos.html")
 
 #Descriptivas municipios con vocación turística
 
-conteo_municipios <- base_total %>%
+conteo_municipios <- base_completa %>%
   select(codmpio, pdet, vocacion_turistica) %>%
   distinct() 
 
@@ -740,60 +755,27 @@ proporcion_pdet_turismo <- conteo_municipios %>%
     proporcion_final = (pdet_con_turismo / total_pdet) * 100
   )
 
-# Muestra el resultado 
-print(proporcion_pdet_turismo)
+# Tabla para HTML
+tabla_pdet_turismo <- proporcion_pdet_turismo %>%
+  rename(
+    "Municipios PDET con vocación turística" = pdet_con_turismo,
+    "Total Municipios PDET" = total_pdet,
+    "Proporción (%)" = proporcion_final
+  ) %>%
+  kable(
+    caption = "Proporción de municipios PDET con vocación turística",
+    digits = 2,
+    format = "html"
+  ) %>%
+  kable_classic(full_width = FALSE, html_font = "Cambria")
 
+# Guardar tabla HTML
+save_kable(tabla_pdet_turismo, "Graficos-tablas/tabla_proporcion_pdet_turismo.html")
 ```
 
-## Paso 4. Modelo empírico - VERSION CAMILA
+## Paso 3. Modelo empírico - VERSION CAMILA
 
 #### Modelo sin PSM con nuevas variables y aproximación comparada
-
-```{r}
-#Cumplimiento de supuesto tendencias paralelas
-yr_tratado <- 2017
-
-base_total_event <- base_completa %>%
-  mutate(
-    tiempo_rel = ano - yr_tratado
-  )
-
-#Estudio de eventos
-modelo_event_simple <- feols(
-  vocacion_turistica ~ i(tiempo_rel, pdet, ref = -1) + l(tasa_sisben, 1) +
-    l(tasa_homicidios, 1) | codmpio + ano,
-  data = base_total_event,
-  panel.id = ~ codmpio + ano, # Solución al error de lag
-  cluster = ~ cod_dpto
-)
-
-etable(modelo_event_simple)
-
-#graficamos 
-iplot(
-  modelo_event_simple, 
-  
-  # Etiquetas
-  main = "Estudio de Eventos: Tendencias Paralelas (Modelo Simple)",
-  xlab = "Años Relativos al Tratamiento (t=0 es el año 2017)",
-  ylab = "Efecto Estimado en Vocación Turística",
-  
-  # Estética y Líneas
-  col = "darkblue",
-  ci.lty = 2, # Tipo de línea para el IC (dashed)
-  ci.fill = TRUE, # Rellena el Intervalo de Confianza
-  
-  # Línea horizontal de referencia en y=0 (opcional, suele ser default)
-  ref.line = 0, 
-  
-  # Línea vertical del evento en t=0 (Inicio del tratamiento)
-  vline = 0, # <-- SOLUCIÓN para la línea vertical
-  
-  # Muestra el período pre-tratamiento
-  # La función automáticamente centra el gráfico, pero si deseas enfocar, usa xlim
-  # xlim = c(-4, max(modelo_event_simple$coeftable$tiempo_rel) + 1)
-)
-```
 
 ```{r}
 ########//////////////// Prueba 2 Laura
@@ -805,7 +787,6 @@ yr_tratado <- 2017
 base_total_event <- base_completa %>%
   mutate(
     tiempo_rel = ano - yr_tratado,
-    # Es buena práctica asegurar que vocacion_turistica sea numérica (0 o 1)
     vocacion_turistica = as.numeric(vocacion_turistica) 
   ) 
 
@@ -814,10 +795,10 @@ setFixest_estimation(panel.id = ~codmpio + ano)
 
 # 2. ESTIMACIÓN DEL MODELO (Linear Probability Model)
 modelo_event_simple <- feols(
-  vocacion_turistica ~ i(tiempo_rel, pdet, ref = -1) + # Interactuamos tiempo con tratamiento
-                       l(tasa_sisben, 1) +             # Controles rezagados 1 año
-                       l(tasa_homicidios, 1) |         # Controles rezagados 1 año
-                       codmpio + ano,                  # Efectos Fijos (Mpio y Año)
+  vocacion_turistica ~ i(tiempo_rel, pdet, ref = -1) + 
+                       l(tasa_sisben, 1) +             
+                       l(tasa_homicidios, 1) |         
+                       codmpio + ano,                  
   data = base_total_event,
   cluster = ~cod_dpto # Clúster a nivel departamento (conservador y correcto para PDET)
 )
@@ -925,8 +906,6 @@ abline(v = 0, col = "gray40", lty = 2)
 dev.off()
 
 ```
-
-
 
 ```{r}
 
@@ -1264,7 +1243,6 @@ datos_emparejados <- datos_emparejados %>%
 table(datos_emparejados$event_time)
 ```
 
-
 ```{r}
 
 #### LAURA 
@@ -1377,10 +1355,10 @@ modelo_3_nopsm <- felm(
 
 # Covariables estrictas para matching (usadas sólo en la base 2016)
 covariables_psm <- c(
-  "codmpio", "pdet", "vocacion_turistica", 
+  "codmpio", "pdet",
   "l_log_pobl_tot", "l_indrural", "l_tasa_urbanizacion", 
   "l_tasa_sisben", "l_tasa_homicidios", "l_tasa_extorsion", 
-  "l_df_ing_propios", "l_valor_agregado_pc", "l_s11_lectu"
+  "l_df_ing_propios", "l_df_gast_inv", "l_df_desemp_fisc", "l_valor_agregado_pc", "l_s11_lectu","l_s11_ingles", "l_participacion_terciarias","l_tasa_ataq_instpol", "l_tasa_docentes", "l_tasa_alumnos_med", "l_log_t_establ"
 )
 
 # ------------------------------------------------------------
@@ -1389,7 +1367,6 @@ covariables_psm <- c(
 base_matching_2016 <- base_lags %>%
   filter(ano == 2016) %>%
   select(all_of(covariables_psm)) %>%
-  # IMPORTANTE: no imputamos; eliminamos filas con NA en las covariables usadas para el PS
   na.omit()
 
 # chequeos rápidos
@@ -1402,9 +1379,12 @@ cat("Tabla vocacion_turistica:\n"); table(base_matching_2016$vocacion_turistica,
 # -------------------------------------------------------------------------
 set.seed(123)
 match_out_m1 <- matchit(
-  formula = pdet ~ l_log_pobl_tot + l_indrural + l_tasa_urbanizacion + 
-            l_tasa_sisben + l_tasa_homicidios + l_tasa_extorsion + 
-            l_df_ing_propios + l_valor_agregado_pc + l_s11_lectu,
+  formula = pdet ~
+    l_log_pobl_tot + l_indrural + l_tasa_urbanizacion + l_tasa_sisben +
+    l_tasa_homicidios + l_tasa_extorsion + l_tasa_ataq_instpol + 
+    l_df_ing_propios + l_df_gast_inv + l_df_desemp_fisc +
+    l_valor_agregado_pc + l_participacion_terciarias +
+    l_tasa_docentes + l_tasa_alumnos_med + l_s11_ingles + l_log_t_establ + l_s11_lectu,
   data = base_matching_2016,
   method = "nearest",
   distance = "logit",
@@ -1445,17 +1425,21 @@ modelo_1_psm <- felm(
   weights = base_panel_psm_m1$weights
 )
 
+
 # -------------------------------------------------------------------------
 # 3.3 MATCHING MODELO 2 (PDET Turístico vs No PDET)
 # -------------------------------------------------------------------------
-base_matching_m2 <- base_lags %>%
-  filter(ano == 2016) %>%
-  # necesitamos codmpio y la variable de tratamiento construida
-  mutate(tratamiento_m2 = if_else(pdet == 1 & vocacion_turistica == 1, 1L, 0L)) %>%
-  select(codmpio, tratamiento_m2, l_log_pobl_tot, l_indrural,
-         l_tasa_urbanizacion, l_tasa_sisben, l_tasa_homicidios,
-         l_tasa_extorsion, l_df_ing_propios, l_valor_agregado_pc, l_s11_lectu) %>%
-  na.omit()
+
+muestra_modelo2_psm <- base_panel_psm_m1 %>%
+  mutate(
+    tratado_tur = if_else(pdet == 1 & vocacion_turistica == 1, 1L, 0L)
+  )
+
+muestra_modelo2_psm <- muestra_modelo2_psm %>%
+  filter(pdet == 0 | (pdet == 1 & vocacion_turistica == 1)) %>%
+  mutate(
+    tratado_tur = if_else(pdet == 1 & vocacion_turistica == 1, 1L, 0L)
+  )
 
 # Chequeos
 cat("Dim base_matching_m2:", dim(base_matching_m2), "\n")
@@ -1488,6 +1472,7 @@ base_panel_psm_m2 <- base_lags %>%
 
 stopifnot(sum(is.na(base_panel_psm_m2$weights)) == 0)
 
+#Modelo 2 / 
 modelo_2_psm <- felm(
   log1p(visitantes_extranjeros_no_residentes) ~ 
     tratado_tur * post + 
@@ -1497,8 +1482,8 @@ modelo_2_psm <- felm(
     l_valor_agregado_pc + l_participacion_terciarias +
     l_tasa_docentes + l_tasa_alumnos_med + l_s11_ingles + l_log_t_establ + l_s11_lectu
   | codmpio + ano | 0 | cod_dpto,
-  data = base_panel_psm_m2,
-  weights = base_panel_psm_m2$weights
+  data = muestra_modelo2_psm,
+  weights = muestra_modelo2_psm$weights
 )
 
 # -------------------------------------------------------------------------
@@ -1516,7 +1501,7 @@ cat("Tabla vocacion_turistica (en PDET):\n"); table(base_matching_m3$vocacion_tu
 
 set.seed(789)
 match_out_m3 <- matchit(
-  formula = vocacion_turistica ~ l_log_pobl_tot + l_indrural + l_tasa_urbanizacion + 
+  formula = vocacion_turistica ~ l_log_pobl_tot + l_indrural + l_tasa_urbanizacion +
             l_tasa_sisben + l_tasa_homicidios + l_tasa_extorsion + 
             l_df_ing_propios + l_valor_agregado_pc + l_s11_lectu,
   data = base_matching_m3,
@@ -1541,17 +1526,24 @@ base_panel_psm_m3 <- base_lags %>%
 
 stopifnot(sum(is.na(base_panel_psm_m3$weights)) == 0)
 
+## muestra de modelo pdet turistico vs pdet normal
+muestra_modelo3_psm <- base_panel_psm_m1 %>%
+  filter(pdet == 1) %>%   
+  mutate(
+    tratado_tur = if_else(vocacion_turistica == 1, 1L, 0L)
+  )
+
 modelo_3_psm <- felm(
   log1p(visitantes_extranjeros_no_residentes) ~ 
-    pdet_tur_dummy * post + 
+    tratado_tur * post + 
     l_log_pobl_tot + l_indrural + l_tasa_urbanizacion + l_tasa_sisben +
     l_tasa_homicidios + l_tasa_extorsion + l_tasa_ataq_instpol + 
     l_df_ing_propios + l_df_gast_inv + l_df_desemp_fisc +
     l_valor_agregado_pc + l_participacion_terciarias +
     l_tasa_docentes + l_tasa_alumnos_med + l_s11_ingles + l_log_t_establ + l_s11_lectu
   | codmpio + ano | 0 | cod_dpto,
-  data = base_panel_psm_m3,
-  weights = base_panel_psm_m3$weights
+  data = muestra_modelo3_psm,
+  weights = muestra_modelo3_psm$weights
 )
 
 # ==============================================================================
@@ -1628,11 +1620,136 @@ cat("N municipios emparejados M3:", nrow(datos_matched_m3), "\n")
 
 ```
 
+```{r}
+#Tabulacion de los modelos SIN PSM
 
+modelos_sin_psm <- list(
+  "M1 (DiD)" = modelo_1_nopsm, 
+  "M2 (DiD)" = modelo_2_nopsm, 
+  "M3 (DiD)" = modelo_3_nopsm
+)
 
+tabla_modelos_sinpsm <- stargazer(
+  modelos_sin_psm,
+  
+  title = "Tabla 1: Resultados DiD sin PSM (Efectos Fijos)",
+  type = "text", 
+  dep.var.labels = "log(1 + Visitantes Extranjeros)",
+  model.numbers = FALSE,
+  column.labels = c("Modelo 1", "Modelo 2", "Modelo 3"),
+  
+  # --- ETIQUETAS DE COEFICIENTES Y ORDEN ---
+  covariate.labels = c(
+    # 1. INTERACCIONES (Efecto DiD)
+    "PDET × Post (M1)", 
+    "Tratado Turístico × Post (M2, M3)",
+    
+    # 2. VARIABLES BASE
+    "PDET (M1)",
+    "Tratado Turístico (M2, M3)",
+    "Post 2017",
+    
+    # 3. CONTROLES LAGGED
+    "Lag log población total", "Lag índice ruralidad", "Lag tasa urbanización",
+    "Lag tasa SISBEN", "Lag tasa homicidios", "Lag tasa extorsión", "Lag tasa ataques inst.",
+    "Lag ingresos propios", "Lag gasto inversión", "Lag desempeño fiscal",
+    "Lag valor agregado pc", "Lag participación terc.",
+    "Lag tasa docentes", "Lag tasa alumnos media", "Lag Saber 11 inglés", 
+    "Lag log establecimientos", "Lag Saber 11 lectura"
+  ),
+  
+  # --- VARIABLES A INCLUIR (keep) ---
+  keep = c(
+    # Interacciones
+    "pdet:post", "tratado_tur:post", 
+    
+    # Variables Base
+    "pdet", "tratado_tur", "post",
+    
+    # Controles Lagged (Misma lista que antes)
+    "l_log_pobl_tot", "l_indrural", "l_tasa_urbanizacion", "l_tasa_sisben",
+    "l_tasa_homicidios", "l_tasa_extorsion", "l_tasa_ataq_instpol",
+    "l_df_ing_propios", "l_df_gast_inv", "l_df_desemp_fisc",
+    "l_valor_agregado_pc", "l_participacion_terciarias",
+    "l_tasa_docentes", "l_tasa_alumnos_med", "l_s11_ingles", 
+    "l_log_t_establ", "l_s11_lectu"
+  ),
+  
+  # --- ESTADÍSTICAS Y NOTAS FINALES ---
+  omit.stat = c("f", "ser", "rsq"),
+  add.lines = list(
+    c("Efectos Fijos (Mpio & Año)", rep("Sí", 3)), 
+    c("Errores Estándar", rep("Clusterizados (Dpto)", 3))
+  ),
+  no.space = TRUE
+)
 
+#Modelos con psm
 
+modelos_con_psm <- list(
+  "M1 (DiD+PSM)" = modelo_1_psm, 
+  "M2 (DiD+PSM)" = modelo_2_psm, 
+  "M3 (DiD+PSM)" = modelo_3_psm
+)
 
+tabla_modelos_psm <- stargazer(
+  modelos_con_psm,
+  
+  title = "Tabla 2: Resultados DiD con PSM (Ponderados)",
+  type = "text", 
+  dep.var.labels = "log(1 + Visitantes Extranjeros)",
+  model.numbers = FALSE,
+  column.labels = c("Modelo 1", "Modelo 2", "Modelo 3"),
+  
+  # --- ETIQUETAS DE COEFICIENTES Y ORDEN ---
+  covariate.labels = c(
+    # 1. INTERACCIONES (Efecto DiD)
+    "PDET × Post (M1)", 
+    "Tratado Turístico × Post (M2, M3)",
+    
+    # 2. VARIABLES BASE
+    "PDET (M1)",
+    "Tratado Turístico (M2, M3)",
+    "Post 2017",
+    
+    # 3. CONTROLES LAGGED
+    "Lag log población total", "Lag índice ruralidad", "Lag tasa urbanización",
+    "Lag tasa SISBEN", "Lag tasa homicidios", "Lag tasa extorsión", "Lag tasa ataques inst.",
+    "Lag ingresos propios", "Lag gasto inversión", "Lag desempeño fiscal",
+    "Lag valor agregado pc", "Lag participación terc.",
+    "Lag tasa docentes", "Lag tasa alumnos media", "Lag Saber 11 inglés", 
+    "Lag log establecimientos", "Lag Saber 11 lectura"
+  ),
+  
+  # --- VARIABLES A INCLUIR (keep) ---
+  keep = c(
+    # Interacciones
+    "pdet:post", "tratado_tur:post", 
+    
+    # Variables Base
+    "pdet", "tratado_tur", "post",
+    
+    # Controles Lagged (Misma lista que antes)
+    "l_log_pobl_tot", "l_indrural", "l_tasa_urbanizacion", "l_tasa_sisben",
+    "l_tasa_homicidios", "l_tasa_extorsion", "l_tasa_ataq_instpol",
+    "l_df_ing_propios", "l_df_gast_inv", "l_df_desemp_fisc",
+    "l_valor_agregado_pc", "l_participacion_terciarias",
+    "l_tasa_docentes", "l_tasa_alumnos_med", "l_s11_ingles", 
+    "l_log_t_establ", "l_s11_lectu"
+  ),
+  
+  # --- ESTADÍSTICAS Y NOTAS FINALES ---
+  omit.stat = c("f", "ser", "rsq"),
+  add.lines = list(
+    c("Efectos Fijos (Mpio & Año)", rep("Sí", 3)), 
+    c("Errores Estándar", rep("Clusterizados (Dpto)", 3)),
+    c("Ponderación", rep("Pesos PSM", 3)) # Indica el uso de pesos
+  ),
+  no.space = TRUE
+)
+```
+
+\
 
 ## Paso 4.1 Propensity Score Matching
 
@@ -1788,8 +1905,6 @@ iplot(
 abline(v = 0, lty = 2, col = "darkred")   # línea vertical en el evento
 abline(h = 0, lty = 1, col = "gray40")    # línea horizontal en cero
 dev.off()
-
-
 ```
 
 ## Paso 4.3. Modelos DiD
@@ -2016,4 +2131,3 @@ stargazer(
  no.space = TRUE
 )
 ```
-
