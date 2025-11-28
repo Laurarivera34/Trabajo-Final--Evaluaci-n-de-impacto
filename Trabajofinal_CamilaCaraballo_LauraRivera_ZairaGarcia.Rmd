@@ -100,9 +100,10 @@ turismo        <- read_excel("Datos/turismo.xlsx")
 
 
 # ======================================================================
-# CARGA DE TODAS LAS HOJAS DE VALOR AGREGADO DEL DANE
+# CARGA DE TODAS LAS HOJAS DE VALOR AGREGADO DEL DANE Y MONITOR DE TERRITORIO
 # ======================================================================
 
+#DANE
 years <- as.character(2013:2022)
 
 va_sector <- map_dfr(
@@ -111,6 +112,69 @@ va_sector <- map_dfr(
       mutate(ano = as.integer(.x))
 )
 
+#MONITOR
+monitor <- "Datos/Monitor_Territorial.xlsx"
+
+nombres_hojas <- c(
+  "3-1-1_ValorAgregadoPerCapita",          
+  "5-1_NumEmpresasActivas",    
+  "5-1_NumAngencia",
+  "5-1-1_TasaEmpresasActivas",
+  "12-1-1_TasaHomicidios",
+  "12-3-1_TasaExtorsiones",
+  "12-8_CultivosIlicitos"
+  
+)
+
+#Extracción de hojas relevantes para el análisis
+leer_hoja_long <- function(hoja) {
+  df <- read_excel(monitor, sheet = hoja)
+  cols_ano <- names(df)[grepl("^[0-9]{4}$", names(df))]
+  df <- df %>%
+    select(
+      Divipola,
+      Departamento,
+      Municipio,
+      all_of(cols_ano)
+    )
+  # Pasar a formato long 
+  df_long <- df %>%
+    pivot_longer(
+      cols = all_of(cols_ano),
+      names_to = "Ano",
+      values_to = "Valor"      
+    ) %>%
+    mutate(
+      Ano = as.integer(Ano),
+      Variable_Fuente = hoja
+    )
+  return(df_long)
+}
+
+#Unir las bases
+base_long <- map_dfr(nombres_hojas, leer_hoja_long)
+
+base_long <- base_long %>%
+  mutate(
+    Divipola     = as.character(Divipola),
+    Departamento = str_squish(str_to_upper(Departamento)),
+    Municipio    = str_squish(str_to_upper(Municipio))
+  )
+
+datos_monitor <- base_long %>%
+  pivot_wider(
+    id_cols    = c(Divipola, Departamento, Municipio, Ano),
+    names_from = Variable_Fuente,
+    values_from = Valor
+  )
+
+#Pasar a wide para tener una fila por municipio–año
+datos_monitor <- base_long %>%
+  pivot_wider(
+    id_cols = c(Divipola, Departamento, Municipio, Ano),
+    names_from  = Variable_Fuente, 
+    values_from = Valor
+  )
 
 # ======================================================================
 # LIMPIEZA INICIAL
@@ -123,7 +187,7 @@ violencia       <- violencia %>% clean_names()
 mpiopdet        <- mpiopdet %>% clean_names()
 turismo         <- turismo %>% clean_names()
 va_sector       <- va_sector %>% clean_names()
-
+datos_monitor   <- datos_monitor %>% clean_names()
 
 # ======================================================================
 # ESTANDARIZACIÓN DE LLAVES Y AJUSTES
@@ -153,6 +217,39 @@ va_sector <- va_sector %>%
   rename(codmpio = codigo_municipio) %>%
   mutate(codmpio = str_remove(as.character(codmpio), "^0"))
 
+datos_monitor <- datos_monitor %>%
+  mutate(
+    codmpio = case_when(
+      str_length(divipola) == 4 ~ str_c("0", divipola),
+      TRUE ~ divipola
+    ),
+    depto = departamento,
+    mpio  = municipio,
+    cod_dpto = str_sub(codmpio, 1, 2)
+  )
+  
+datos_monitor <- datos_monitor %>%
+  select(
+    -divipola,
+    -departamento,
+    -municipio
+  )
+
+datos_monitor <- datos_monitor %>%
+  mutate(
+    depto = str_to_title(str_to_lower(depto)),
+    mpio  = str_to_title(str_to_lower(mpio))
+  )
+
+datos_monitor <- datos_monitor %>%
+  select(
+    codmpio,
+    ano,
+    cod_dpto,
+    depto,
+    mpio,
+    everything()
+  )
 
 # ======================================================================
 # CAMBIO DE TIPOS
@@ -164,7 +261,6 @@ gobierno   <- gobierno   %>% mutate(across(c(ano, codmpio), as.numeric))
 caracteristicas <- caracteristicas %>% mutate(across(c(ano, codmpio), as.numeric))
 turismo    <- turismo    %>% mutate(across(c(codmpio), as.numeric))
 va_sector  <- va_sector  %>% mutate(across(c(codmpio), as.numeric))
-
 
 # ======================================================================
 # ELIMINACIÓN DE DUPLICADOS EN TURISMO Y CONSOLIDACIÓN
@@ -226,6 +322,21 @@ va_sector <- va_sector %>%
   select(codmpio, ano, municipio, actividades_terciarias, valor_agregado) %>%
   mutate(participacion_terciarias = (actividades_terciarias / valor_agregado) * 100)
 
+datos_monitor <- datos_monitor %>%
+  rename(
+    tasa_homicidios_alterna = x12_1_1_tasa_homicidios,
+    va_percapita_alterna = x3_1_1_valor_agregado_per_capita,
+    empr_tur_activas_alterna = x5_1_num_empresas_activas,
+    numagencia_alterna = x5_1_num_angencia, 
+    tasa_empr_tur_alterna = x5_1_1_tasa_empresas_activas,
+    tasa_extorsion_alterna = x12_3_1_tasa_extorsiones,
+    ha_coca_alterna = x12_8_cultivos_ilicitos
+  )
+
+datos_monitor <- datos_monitor %>%
+  mutate(
+    depto = str_to_title(depto)
+  )
 
 # ======================================================================
 # UNIÓN FINAL DE BASES
@@ -236,7 +347,7 @@ base_completa <- caracteristicas %>%
   left_join(gobierno,           by = c("codmpio", "ano")) %>%
   left_join(violencia,          by = c("codmpio", "ano")) %>%
   left_join(turismo_consolidado,by = c("codmpio", "ano")) %>%
-  left_join(va_sector,          by = c("codmpio", "ano"))
+  left_join(va_sector,          by = c("codmpio", "ano")) %>%
 
 base_completa %>% count(codmpio, ano) %>% filter(n > 1)
 
@@ -245,6 +356,87 @@ base_completa <- base_completa %>%
   select(-municipio.y) %>%
   filter(ano >= 2013 & ano <= 2021)
 
+base_completa <- base_completa %>%
+  mutate(
+    depto = str_to_title(depto)
+  )
+
+
+base_completa <- base_completa %>%
+  mutate(
+    depto = case_when(
+      depto %in% c("Antioquia") ~ "Antioquia",
+      
+      depto %in% c("Atlántico", "Atlantico") ~ "Atlántico",
+      
+      depto %in% c("Bogotá, D.c.", "Bogota Dc") ~ "Bogotá, D.C.",
+      
+      depto %in% c("Bolívar", "Bolivar") ~ "Bolívar",
+      
+      depto %in% c("Boyacá", "Boyaca") ~ "Boyacá",
+      
+      depto %in% c("Caldas") ~ "Caldas",
+      
+      depto %in% c("Caquetá", "Caqueta") ~ "Caquetá",
+      
+      depto %in% c("Cauca") ~ "Cauca",
+      
+      depto %in% c("Cesar") ~ "Cesar",
+      
+      depto %in% c("Córdoba", "Cordoba") ~ "Córdoba",
+      
+      depto %in% c("Cundinamarca") ~ "Cundinamarca",
+      
+      depto %in% c("Chocó", "Choco") ~ "Chocó",
+      
+      depto %in% c("Huila") ~ "Huila",
+      
+      depto %in% c("La Guajira", "Guajira") ~ "La Guajira",
+      
+      depto %in% c("Magdalena") ~ "Magdalena",
+      
+      depto %in% c("Meta") ~ "Meta",
+      
+      depto %in% c("Nariño", "Narino") ~ "Nariño",
+      
+      depto %in% c("Norte De Santander", "Norte Santander") ~ "Norte de Santander",
+      
+      depto %in% c("Quindio") ~ "Quindío",
+      
+      depto %in% c("Risaralda") ~ "Risaralda",
+      
+      depto %in% c("Santander") ~ "Santander",
+      
+      depto %in% c("Sucre") ~ "Sucre",
+      
+      depto %in% c("Tolima") ~ "Tolima",
+      
+      depto %in% c("Valle Del Cauca", "Valle Cauca") ~ "Valle del Cauca",
+      
+      depto %in% c("Arauca") ~ "Arauca",
+      
+      depto %in% c("Casanare") ~ "Casanare",
+      
+      depto %in% c("Putumayo") ~ "Putumayo",
+      
+      depto %in% c("Archipiélago De San Andrés",
+                   "Archipiélago De San Andrés, Providencia Y Santa Catalina",
+                   "Archipielago San Andres Providencia Y Santa Catalina") ~ 
+        "Archipiélago de San Andrés, Providencia y Santa Catalina",
+      
+      depto %in% c("Amazonas") ~ "Amazonas",
+      
+      depto %in% c("Guainía", "Guainia") ~ "Guainía",
+      
+      depto %in% c("Guaviare") ~ "Guaviare",
+      
+      depto %in% c("Vaupés", "Vaupes") ~ "Vaupés",
+      
+      depto %in% c("Vichada") ~ "Vichada",
+      
+      TRUE ~ depto
+    )
+  )
 
 # ======================================================================
 # CLASIFICACIÓN PDET
@@ -318,6 +510,131 @@ base_completa <- base_completa %>%
     tasa_alumnos_med   = (alumn_med / pobl_tot) * 100,
     tasa_urbanizacion  = (pobl_urb / pobl_tot) * 100,
     valor_agregado_pc  = (valor_agregado / pobl_tot) * 100
+  )
+
+# ======================================================================
+# CONSTRUCCIÓN BASE ALTERNA
+# ======================================================================
+
+datos_monitor <- datos_monitor %>%
+  mutate(
+    codmpio = as.character(codmpio),
+    codmpio = if_else(
+      str_length(codmpio) == 4,
+      str_c("0", codmpio),
+      codmpio
+    )
+  )
+
+base_alterna <- base_completa %>% 
+  left_join(datos_monitor, by = c("codmpio", "ano"))
+
+
+base_alterna <- base_alterna %>%
+  rename(
+    cod_dpto = cod_dpto.x,
+    mpio = mpio.x,
+    depto = depto.x
+  )
+
+base_alterna <- base_alterna %>%
+  select(
+    codmpio, cod_dpto, mpio, depto,ano,
+    post, pdet,vocacion_turistica,actividades_terciarias, altura,
+    ha_coca_alterna, va_percapita_alterna, tasa_ataq_instpol,
+    tasa_extorsion_alterna, tasa_homicidios_alterna, tasa_alumnos_med, alumn_med, 
+    ataq_instpol, df_desemp_fisc, df_gast_inv, df_ing_propios,pobl_urb,  
+    tasa_empr_tur_alterna, tasa_urbanizacion, total_sisben,pobl_rur, 
+    discapital, numagencia_alterna, indrural, pobl_tot, tasa_docentes, tasa_sisben,
+    participacion_terciarias, docen_total, log_pobl_tot, log_t_establ, s11_ingles, 
+    s11_lectu, t_establ, 
+  )
+
+base_alterna <- base_alterna %>%
+  mutate(
+    depto = str_to_title(depto)
+  )
+
+base_alterna <- base_alterna %>%
+  mutate(
+    depto = str_to_title(mpio)
+  )
+
+
+base_alterna <- base_alterna %>%
+  mutate(
+    depto = case_when(
+      depto %in% c("Antioquia") ~ "Antioquia",
+      
+      depto %in% c("Atlántico", "Atlantico") ~ "Atlántico",
+      
+      depto %in% c("Bogotá, D.c.", "Bogota Dc") ~ "Bogotá, D.C.",
+      
+      depto %in% c("Bolívar", "Bolivar") ~ "Bolívar",
+      
+      depto %in% c("Boyacá", "Boyaca") ~ "Boyacá",
+      
+      depto %in% c("Caldas") ~ "Caldas",
+      
+      depto %in% c("Caquetá", "Caqueta") ~ "Caquetá",
+      
+      depto %in% c("Cauca") ~ "Cauca",
+      
+      depto %in% c("Cesar") ~ "Cesar",
+      
+      depto %in% c("Córdoba", "Cordoba") ~ "Córdoba",
+      
+      depto %in% c("Cundinamarca") ~ "Cundinamarca",
+      
+      depto %in% c("Chocó", "Choco") ~ "Chocó",
+      
+      depto %in% c("Huila") ~ "Huila",
+      
+      depto %in% c("La Guajira", "Guajira") ~ "La Guajira",
+      
+      depto %in% c("Magdalena") ~ "Magdalena",
+      
+      depto %in% c("Meta") ~ "Meta",
+      
+      depto %in% c("Nariño", "Narino") ~ "Nariño",
+      
+      depto %in% c("Norte De Santander", "Norte Santander") ~ "Norte de Santander",
+      
+      depto %in% c("Quindio") ~ "Quindío",
+      
+      depto %in% c("Risaralda") ~ "Risaralda",
+      
+      depto %in% c("Santander") ~ "Santander",
+      
+      depto %in% c("Sucre") ~ "Sucre",
+      
+      depto %in% c("Tolima") ~ "Tolima",
+      
+      depto %in% c("Valle Del Cauca", "Valle Cauca") ~ "Valle del Cauca",
+      
+      depto %in% c("Arauca") ~ "Arauca",
+      
+      depto %in% c("Casanare") ~ "Casanare",
+      
+      depto %in% c("Putumayo") ~ "Putumayo",
+      
+      depto %in% c("Archipiélago De San Andrés",
+                   "Archipiélago De San Andrés, Providencia Y Santa Catalina",
+                   "Archipielago San Andres Providencia Y Santa Catalina") ~ 
+        "Archipiélago de San Andrés, Providencia y Santa Catalina",
+      
+      depto %in% c("Amazonas") ~ "Amazonas",
+      
+      depto %in% c("Guainía", "Guainia") ~ "Guainía",
+      
+      depto %in% c("Guaviare") ~ "Guaviare",
+      
+      depto %in% c("Vaupés", "Vaupes") ~ "Vaupés",
+      
+      depto %in% c("Vichada") ~ "Vichada",
+      
+      TRUE ~ depto
+    )
   )
 
 ```
@@ -614,9 +931,9 @@ save_kable(tabla_pdet_turismo, "Graficos-tablas/tabla_proporcion_pdet_turismo.ht
 
 ```
 
-## 3. Modelo empírico 
+## 3. Modelo empírico
 
-#### 3.1 Tendencias Paralelas 
+#### 3.1 Tendencias Paralelas
 
 La estrategia de identificación se basa en un modelo de diferencias en diferencias (DiD) que compara la evolución del turismo formal entre municipios PDET y no PDET antes y después de 2017. La asignación de los 170 municipios PDET fue definida por criterios exógenos establecidos en el Decreto Ley 893 de 2017, lo que respalda la validez del diseño. Como primer paso, realizamos un estudio de eventos para evaluar el supuesto fundamental del enfoque DiD: las tendencias paralelas, según el cual ambos grupos habrían seguido trayectorias similares en ausencia del programa.
 
@@ -708,16 +1025,15 @@ dev.off()
 
 ```
 
-
 #### 3.2 Modelo sin PSM con nuevas variables y aproximación comparada
 
-Los tres modelos estiman efectos causales mediante Diferencias en Diferencias, pero sobre poblaciones comparativas distintas. 
+Los tres modelos estiman efectos causales mediante Diferencias en Diferencias, pero sobre poblaciones comparativas distintas.
 
-1) El Modelo 1 evalúa el impacto general de los municipios PDET frente a los no PDET, comparando ambos grupos antes y después de 2017. 
+1)  El Modelo 1 evalúa el impacto general de los municipios PDET frente a los no PDET, comparando ambos grupos antes y después de 2017.
 
-2) El Modelo 2 se centra únicamente en los PDET con vocación turística, contrastándolos con los municipios no PDET para medir si el componente turístico amplifica los efectos del programa. 
+2)  El Modelo 2 se centra únicamente en los PDET con vocación turística, contrastándolos con los municipios no PDET para medir si el componente turístico amplifica los efectos del programa.
 
-3) El Modelo 3 restringe la muestra solo a municipios PDET y compara aquellos con vocación turística frente a los que no la tienen, analizando diferencias internas.
+3)  El Modelo 3 restringe la muestra solo a municipios PDET y compara aquellos con vocación turística frente a los que no la tienen, analizando diferencias internas.
 
 ```{r}
 
@@ -1583,7 +1899,7 @@ stargazer(
 
 ```
 
-Finalmente, se comparan los modelos sin PSM y con PSM 
+Finalmente, se comparan los modelos sin PSM y con PSM
 
 ```{r}
 ############################################################
@@ -1732,4 +2048,3 @@ cat(tabla_modelos_psm, file = ruta_archivo)
 ```
 
 \
-
