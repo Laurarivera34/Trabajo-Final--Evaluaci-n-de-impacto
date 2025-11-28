@@ -347,7 +347,7 @@ base_completa <- caracteristicas %>%
   left_join(gobierno,           by = c("codmpio", "ano")) %>%
   left_join(violencia,          by = c("codmpio", "ano")) %>%
   left_join(turismo_consolidado,by = c("codmpio", "ano")) %>%
-  left_join(va_sector,          by = c("codmpio", "ano")) %>%
+  left_join(va_sector,          by = c("codmpio", "ano"))
 
 base_completa %>% count(codmpio, ano) %>% filter(n > 1)
 
@@ -526,9 +526,11 @@ datos_monitor <- datos_monitor %>%
     )
   )
 
+# CAMBIO DE TIPOS
+datos_monitor  <- datos_monitor  %>% mutate(across(c(ano, codmpio), as.numeric))
+
 base_alterna <- base_completa %>% 
   left_join(datos_monitor, by = c("codmpio", "ano"))
-
 
 base_alterna <- base_alterna %>%
   rename(
@@ -536,6 +538,13 @@ base_alterna <- base_alterna %>%
     mpio = mpio.x,
     depto = depto.x
   )
+
+# ======================================================
+# CREACIÓN DE VARIABLE POST-TRATAMIENTO
+# ======================================================
+
+base_alterna <- base_alterna %>%
+  mutate(post = as.numeric(ano >= 2017))
 
 base_alterna <- base_alterna %>%
   select(
@@ -636,6 +645,35 @@ base_alterna <- base_alterna %>%
       TRUE ~ depto
     )
   )
+
+# Revisión de duplicados
+base_alterna %>% 
+  filter(pdet == 1) %>% 
+  count(codmpio) %>% 
+  filter(n > 1)
+
+# Se corrigen los duplicados
+base_alterna <- base_alterna %>% 
+  group_by(codmpio, ano) %>% 
+  summarise(
+    # Mantener pdet como 0/1 exacto
+    pdet = max(pdet, na.rm = TRUE),
+
+    # Promediar todas las variables numéricas excepto pdet
+    across(where(is.numeric) & !matches("pdet"), mean, na.rm = TRUE),
+
+    # Mantener la primera categoría en variables tipo caracter
+    across(where(is.character), ~ first(.x)),
+
+    .groups = "drop"
+  )
+
+# Se revisa que ya no existan duplicados
+dup <- base_alterna %>% 
+  count(codmpio, ano) %>% 
+  filter(n > 1)
+
+dup
 
 ```
 
@@ -2048,3 +2086,843 @@ cat(tabla_modelos_psm, file = ruta_archivo)
 ```
 
 \
+
+
+
+### 4 Base alterna
+#### 4.1 Tendencias Paralelas
+
+La estrategia de identificación se basa en un modelo de diferencias en diferencias (DiD) que compara la evolución del turismo formal entre municipios PDET y no PDET antes y después de 2017. La asignación de los 170 municipios PDET fue definida por criterios exógenos establecidos en el Decreto Ley 893 de 2017, lo que respalda la validez del diseño. Como primer paso, realizamos un estudio de eventos para evaluar el supuesto fundamental del enfoque DiD: las tendencias paralelas, según el cual ambos grupos habrían seguido trayectorias similares en ausencia del programa.
+
+Los valores del gráfico representan la distancia temporal respecto al año del tratamiento: –4 corresponde a cuatro años antes (2013), –3 a tres años antes (2014), –2 a dos años antes (2015) y –1 al año inmediatamente anterior (2016). El valor 0 indica el año del tratamiento (2017). Los valores positivos reflejan el período posterior: +1 equivale a un año después (2018), +2 a dos años después (2019), +3 a tres años después (2020) y +4 a cuatro años después (2021).
+
+```{r}
+# ======================================================
+# 1. CREAR AÑO DE TRATAMIENTO
+# ======================================================
+base_alterna_event <- base_alterna %>%
+  mutate(
+    treat_year = if_else(pdet == 1, 2017, Inf)
+  )
+
+# Panel
+base_alterna_event <- panel(base_alterna_event, ~ codmpio + ano)
+
+# ======================================================
+# 2. ESTIMAR MODELO 
+# ======================================================
+modelo_alterno <- feols(
+  (tasa_empr_tur_alterna) ~ 
+    sunab(treat_year, ano) +
+    l(log_pobl_tot, 1) +             
+    l(tasa_urbanizacion, 1) +        
+    l(participacion_terciarias, 1) + 
+    l(tasa_sisben, 1)   | 
+    codmpio + ano,
+  data = base_alterna_event,
+  cluster = ~ cod_dpto
+)
+
+etable(modelo_alterno, fitstat = c("n", "r2"))
+
+
+# ======================================================
+# 3. GRÁFICO EVENT STUDY 
+# ======================================================
+# Paleta
+pal <- paletteer_c("grDevices::BluGrn", 30)
+col_evento <- pal[1]
+
+# Gráfico en pantalla
+iplot(
+  modelo_alterno,
+  xlab = "Años relativos al tratamiento (Año base: 2017)",
+  ylab = "Variación en Tasa de empresas turísticas",
+  main = "Test de Tendencias Paralelas (PDET vs No PDET)",
+  col = col_evento,
+  ref.line = 0,
+  pt.pch = 20,
+  ci.lty = 2,
+  grid = TRUE
+)
+
+# --- Guardar el mismo gráfico, SIN repetir iplot ---
+p <- recordPlot()  # captura lo que ya se dibujó en pantalla
+
+png("Graficos-tablas/modelo_alterno_iplot.png", width = 2400, height = 1600, res = 300)
+replayPlot(p)      # reproduce el gráfico capturado
+dev.off()
+
+```
+
+#### 3.2 Modelo sin PSM con nuevas variables y aproximación comparada
+
+Los tres modelos estiman efectos causales mediante Diferencias en Diferencias, pero sobre poblaciones comparativas distintas.
+
+1)  El Modelo 1 evalúa el impacto general de los municipios PDET frente a los no PDET, comparando ambos grupos antes y después de 2017.
+
+2)  El Modelo 2 se centra únicamente en los PDET con vocación turística, contrastándolos con los municipios no PDET para medir si el componente turístico amplifica los efectos del programa.
+
+3)  El Modelo 3 restringe la muestra solo a municipios PDET y compara aquellos con vocación turística frente a los que no la tienen, analizando diferencias internas.
+
+```{r}
+
+base_alterna <- base_alterna %>%
+  mutate(
+    tasanumagencia_alterna    = (numagencia_alterna / pobl_tot) * 100000)
+
+##### MODELO 1: Diferencias en Diferencias – Municipios PDET vs No PDET
+
+# ======================================================
+# ESTANDARIZACIÓN DE LLAVES
+# ======================================================
+
+base_alterna <- base_alterna %>%
+  mutate(
+    codmpio  = str_pad(as.character(codmpio), 5, pad = "0"),
+    cod_dpto = as.character(cod_dpto)
+  )
+
+# ======================================================
+# CREACIÓN DE CONTROLES CON LAG POR MUNICIPIO
+# ======================================================
+
+base_lags_alterna <- base_alterna %>%
+  arrange(codmpio, ano) %>%
+  group_by(codmpio) %>%
+  mutate(
+    tasanumagencia_alterna,
+    l_log_pobl_tot   = lag(log_pobl_tot, 1),
+    l_tasa_urbanizacion = lag(tasa_urbanizacion, 1),
+    l_tasa_sisben    = lag(tasa_sisben, 1),
+
+    # Economía
+    l_participacion_terciarias = lag(participacion_terciarias, 1),
+
+  ) %>%
+  ungroup()
+
+# Volvemos a definir post (por consistencia)
+base_lags_alterna <- base_lags_alterna %>% mutate(post = as.numeric(ano >= 2017))
+
+# Eliminamos NA de los lags
+base_lags_alterna <- base_lags_alterna %>% filter(!is.na(l_log_pobl_tot))
+
+
+# ======================================================
+# MODELO 1 – DID: PDET vs No PDET (sin PSM)
+# ======================================================
+
+modelo_1 <- felm(
+ tasanumagencia_alterna ~ 
+    pdet:post +
+    l_log_pobl_tot +
+    l_tasa_urbanizacion +
+    l_tasa_sisben +
+    l_participacion_terciarias 
+  | codmpio + ano
+  | 0 
+  | cod_dpto,
+  data = base_lags_alterna
+)
+
+stargazer(
+  modelo_1,
+  title = "Modelo 1 – DiD PDET vs No PDET (sin PSM)",
+  type  = "text",
+  dep.var.labels = "tasa de empresas turísticas",
+  
+  covariate.labels = c(
+    "Lag log población total",
+    "Lag tasa urbanización",
+    "Lag tasa SISBEN",
+    "Lag participación sector terciario",
+    "PDET × Post"
+  ),
+
+  keep = c(
+    "l_log_pobl_tot",
+    "l_tasa_urbanizacion",
+    "l_tasa_sisben",
+    "l_participacion_terciarias",
+    "pdet:post"
+  ),
+
+  omit.stat = c("f", "ser", "rsq"),
+  no.space = TRUE
+)
+
+
+##### MODELO 2: DID – PDET Turístico vs No PDET
+
+# ======================================================
+# CREACIÓN DE VARIABLE tratado_tur
+# ======================================================
+
+base_lags <- base_lags %>%
+  mutate(
+    tratado_tur = if_else(pdet == 1 & vocacion_turistica == 1, 1L, 0L)
+  )
+
+muestra_modelo2 <- base_lags %>%
+  filter(pdet == 0 | (pdet == 1 & vocacion_turistica == 1)) %>%
+  mutate(
+    tratado_tur = if_else(pdet == 1 & vocacion_turistica == 1, 1L, 0L)
+  )
+
+
+# ======================================================
+# MODELO 2 – DID: PDET Turístico vs No PDET (sin PSM)
+# ======================================================
+
+modelo_2_nopsm <- felm(
+  log1p(visitantes_extranjeros_no_residentes) ~ 
+    tratado_tur * post +
+    l_log_pobl_tot +
+    l_indrural + 
+    l_tasa_urbanizacion +
+    l_tasa_sisben +
+    l_tasa_homicidios +
+    l_tasa_extorsion +
+    l_tasa_ataq_instpol +
+    l_df_ing_propios +
+    l_df_gast_inv +
+    l_df_desemp_fisc +
+    l_valor_agregado_pc +
+    l_participacion_terciarias +
+    l_tasa_docentes +
+    l_tasa_alumnos_med +
+    l_s11_ingles +
+    l_log_t_establ +
+    l_s11_lectu
+  | codmpio + ano
+  | 0 
+  | cod_dpto,
+  data = muestra_modelo2
+)
+
+stargazer(
+  modelo_2_nopsm,
+  title = "Modelo 2 – DiD: PDET con vocación turística vs No PDET (sin PSM)",
+  type  = "text",   
+  dep.var.labels = "log(1 + tasa de empresas turísticas)",
+  
+  covariate.labels = c(
+    "Tratado turístico (PDET con vocación turística)",
+    "Post 2017",
+    "Tratado turístico × Post",
+    "Lag log población total",
+    "Lag índice ruralidad",
+    "Lag tasa urbanización",
+    "Lag tasa SISBEN",
+    "Lag tasa homicidios",
+    "Lag tasa extorsión",
+    "Lag tasa ataques institucionales",
+    "Lag ingresos propios",
+    "Lag gasto inversión",
+    "Lag desempeño fiscal",
+    "Lag valor agregado per cápita",
+    "Lag participación sector terciario",
+    "Lag tasa docentes",
+    "Lag tasa alumnos media",
+    "Lag Saber 11 inglés",
+    "Lag log establecimientos educativos",
+    "Lag Saber 11 lectura"
+  ),
+  
+  keep = c(
+    "tratado_tur", "post", "tratado_tur:post",
+    "l_log_pobl_tot",
+    "l_indrural",
+    "l_tasa_urbanizacion",
+    "l_tasa_sisben",
+    "l_tasa_homicidios",
+    "l_tasa_extorsion",
+    "l_tasa_ataq_instpol",
+    "l_df_ing_propios",
+    "l_df_gast_inv",
+    "l_df_desemp_fisc",
+    "l_valor_agregado_pc",
+    "l_participacion_terciarias",
+    "l_tasa_docentes",
+    "l_tasa_alumnos_med",
+    "l_s11_ingles",
+    "l_log_t_establ",
+    "l_s11_lectu"
+  ),
+  
+  omit.stat = c("f", "ser", "rsq"),
+  no.space = TRUE
+)
+
+
+##### MODELO 3: DID – PDET Turístico vs PDET No Turístico
+
+# ======================================================
+# CREACIÓN DE MUESTRA PARA MODELO 3
+# ======================================================
+
+muestra_modelo3 <- base_lags %>%
+  filter(pdet == 1) %>%  
+  mutate(
+    tratado_tur = if_else(vocacion_turistica == 1, 1L, 0L)
+  )
+
+
+# ======================================================
+# MODELO 3 – DID: entre municipios PDET (sin PSM)
+# ======================================================
+
+modelo_3_nopsm <- felm(
+  log1p(visitantes_extranjeros_no_residentes) ~ 
+    tratado_tur * post +
+    l_log_pobl_tot +
+    l_indrural + 
+    l_tasa_urbanizacion +
+    l_tasa_sisben +
+    l_tasa_homicidios +
+    l_tasa_extorsion +
+    l_tasa_ataq_instpol +
+    l_df_ing_propios +
+    l_df_gast_inv +
+    l_df_desemp_fisc +
+    l_valor_agregado_pc +
+    l_participacion_terciarias +
+    l_tasa_docentes +
+    l_tasa_alumnos_med +
+    l_s11_ingles +
+    l_log_t_establ +
+    l_s11_lectu
+  | codmpio + ano          
+  | 0 
+  | cod_dpto,             
+  data = muestra_modelo3
+)
+
+stargazer(
+  modelo_3_nopsm,
+  title = "Modelo 3 – DiD: PDET con vocación turística vs PDET sin vocación turística (sin PSM)",
+  type  = "text", 
+  dep.var.labels = "log(1 + visitantes extranjeros no residentes)",
+  
+  covariate.labels = c(
+    "PDET turístico (1 = vocación turística)",
+    "Post 2017",
+    "PDET turístico × Post",
+    "Lag log población total",
+    "Lag índice ruralidad",
+    "Lag tasa urbanización",
+    "Lag tasa SISBEN",
+    "Lag tasa homicidios",
+    "Lag tasa extorsión",
+    "Lag tasa ataques institucionales",
+    "Lag ingresos propios",
+    "Lag gasto inversión",
+    "Lag desempeño fiscal",
+    "Lag valor agregado per cápita",
+    "Lag participación sector terciario",
+    "Lag tasa docentes",
+    "Lag tasa alumnos media",
+    "Lag Saber 11 inglés",
+    "Lag log establecimientos educativos",
+    "Lag Saber 11 lectura"
+  ),
+  
+  keep = c(
+    "tratado_tur", "post", "tratado_tur:post",
+    "l_log_pobl_tot",
+    "l_indrural",
+    "l_tasa_urbanizacion",
+    "l_tasa_sisben",
+    "l_tasa_homicidios",
+    "l_tasa_extorsion",
+    "l_tasa_ataq_instpol",
+    "l_df_ing_propios",
+    "l_df_gast_inv",
+    "l_df_desemp_fisc",
+    "l_valor_agregado_pc",
+    "l_participacion_terciarias",
+    "l_tasa_docentes",
+    "l_tasa_alumnos_med",
+    "l_s11_ingles",
+    "l_log_t_establ",
+    "l_s11_lectu"
+  ),
+  
+  omit.stat = c("f", "ser", "rsq"),
+  no.space = TRUE
+)
+
+```
+
+
+#### 3.3 Modelo con PSM, nuevas variables y aproximación comparada
+
+En este código se implementa Propensity Score Matching (PSM) para construir un grupo de control comparable usando las características basales de los municipios, se obtienen los pesos generados por el emparejamiento y se incorporan a un modelo de Diferencias en Diferencias estimado con felm(), manteniendo efectos fijos por municipio y año. Además, se evalúa el balance antes y después del matching con cobalt y finalmente se generan tablas de resultados con stargazer, replicando tus modelos previos pero ahora ajustados por PSM.
+
+```{r}
+# ==============================================================================
+# PREPARACIÓN DE DATOS Y LAGS
+# ==============================================================================
+
+# Estandarización de llaves 
+base_completa <- base_completa %>%
+  mutate(
+    codmpio  = str_pad(as.character(codmpio), 5, pad = "0"),
+    cod_dpto = as.character(cod_dpto)
+  )
+
+# Creación de lags por municipio 
+base_lags <- base_completa %>%
+  arrange(codmpio, ano) %>%
+  group_by(codmpio) %>%
+  mutate(
+    l_log_pobl_tot      = lag(log_pobl_tot, 1),
+    l_indrural          = lag(indrural, 1),
+    l_tasa_urbanizacion = lag(tasa_urbanizacion, 1),
+    l_tasa_sisben       = lag(tasa_sisben, 1),
+    l_tasa_homicidios   = lag(tasa_homicidios, 1),
+    l_tasa_extorsion    = lag(tasa_extorsion, 1),
+    l_tasa_ataq_instpol = lag(tasa_ataq_instpol, 1),
+    l_df_ing_propios    = lag(df_ing_propios, 1),
+    l_df_gast_inv       = lag(df_gast_inv, 1),
+    l_df_desemp_fisc    = lag(df_desemp_fisc, 1),
+    l_valor_agregado_pc = lag(valor_agregado_pc, 1),
+    l_participacion_terciarias = lag(participacion_terciarias, 1),
+    l_tasa_docentes     = lag(tasa_docentes, 1),
+    l_tasa_alumnos_med  = lag(tasa_alumnos_med, 1),
+    l_s11_ingles        = lag(s11_ingles, 1),
+    l_s11_lectu         = lag(s11_lectu, 1), 
+    l_log_t_establ      = lag(log_t_establ, 1)
+  ) %>%
+  ungroup() %>%
+  mutate(
+    tratado_tur      = if_else(pdet == 1 & vocacion_turistica == 1, 1L, 0L),
+    pdet_tur_dummy   = if_else(vocacion_turistica == 1, 1L, 0L),
+    post             = as.numeric(ano >= 2017)
+  ) %>%
+  filter(!is.na(l_log_pobl_tot))
+
+
+
+# ==============================================================================
+# ESTIMACIONES DiD ORIGINALES (SIN PSM)
+# ==============================================================================
+
+# Modelo 1: PDET vs No PDET 
+modelo_1_nopsm <- felm(
+  log1p(visitantes_extranjeros_no_residentes) ~ 
+    pdet * post +
+    l_log_pobl_tot + l_indrural + l_tasa_urbanizacion + l_tasa_sisben +
+    l_tasa_homicidios + l_tasa_extorsion + l_tasa_ataq_instpol + 
+    l_df_ing_propios + l_df_gast_inv + l_df_desemp_fisc +
+    l_valor_agregado_pc + l_participacion_terciarias +
+    l_tasa_docentes + l_tasa_alumnos_med + l_s11_ingles + 
+    l_log_t_establ + l_s11_lectu
+  | codmpio + ano | 0 | cod_dpto,
+  data = base_lags
+)
+
+# Modelo 2: PDET Turístico vs No PDET 
+modelo_2_nopsm <- felm(
+  log1p(visitantes_extranjeros_no_residentes) ~ 
+    tratado_tur * post +
+    l_log_pobl_tot + l_indrural + l_tasa_urbanizacion + l_tasa_sisben +
+    l_tasa_homicidios + l_tasa_extorsion + l_tasa_ataq_instpol + 
+    l_df_ing_propios + l_df_gast_inv + l_df_desemp_fisc +
+    l_valor_agregado_pc + l_participacion_terciarias +
+    l_tasa_docentes + l_tasa_alumnos_med + l_s11_ingles + 
+    l_log_t_establ + l_s11_lectu
+  | codmpio + ano | 0 | cod_dpto,
+  data = muestra_modelo2
+)
+
+muestra_modelo3 <- muestra_modelo3 %>% 
+  mutate(
+    pdet_tur_dummy = if_else(vocacion_turistica == 1, 1L, 0L)
+  )
+
+
+# Modelo 3: Dentro de PDET (Turístico vs No Turístico) 
+modelo_3_nopsm <- felm(
+  log1p(visitantes_extranjeros_no_residentes) ~ 
+    pdet_tur_dummy * post +
+    l_log_pobl_tot + l_indrural + l_tasa_urbanizacion + l_tasa_sisben +
+    l_tasa_homicidios + l_tasa_extorsion + l_tasa_ataq_instpol + 
+    l_df_ing_propios + l_df_gast_inv + l_df_desemp_fisc +
+    l_valor_agregado_pc + l_participacion_terciarias +
+    l_tasa_docentes + l_tasa_alumnos_med + l_s11_ingles + 
+    l_log_t_establ + l_s11_lectu
+  | codmpio + ano | 0 | cod_dpto,
+  data = muestra_modelo3
+)
+
+# ==============================================================================
+# PSM MUNICIPIO (AÑO 2016) + DID PONDERADOS
+# ==============================================================================
+
+# Covariables del matching 
+covariables_psm <- c(
+  "codmpio", "pdet",
+  "l_log_pobl_tot", "l_indrural", "l_tasa_urbanizacion",
+  "l_tasa_sisben", "l_tasa_homicidios", "l_tasa_extorsion",
+  "l_df_ing_propios", "l_df_gast_inv", "l_df_desemp_fisc",
+  "l_valor_agregado_pc", "l_s11_lectu", "l_s11_ingles",
+  "l_participacion_terciarias","l_tasa_ataq_instpol", 
+  "l_tasa_docentes", "l_tasa_alumnos_med", "l_log_t_establ"
+)
+
+# Base del matching 
+base_matching_2016 <- base_lags %>%
+  filter(ano == 2016) %>%
+  select(all_of(covariables_psm)) %>%
+  na.omit()
+
+cat("Dimensión base_matching_2016:", dim(base_matching_2016), "\n")
+table(base_matching_2016$pdet, useNA="ifany")
+table(base_matching_2016$vocacion_turistica, useNA="ifany")
+
+
+# -------------------------------------------------------------------------
+# MATCHING MODELO 1: PDET vs No PDET
+# -------------------------------------------------------------------------
+
+set.seed(123)
+match_out_m1 <- matchit(
+  formula = pdet ~
+    l_log_pobl_tot + l_indrural + l_tasa_urbanizacion + l_tasa_sisben +
+    l_tasa_homicidios + l_tasa_extorsion + l_tasa_ataq_instpol + 
+    l_df_ing_propios + l_df_gast_inv + l_df_desemp_fisc +
+    l_valor_agregado_pc + l_participacion_terciarias +
+    l_tasa_docentes + l_tasa_alumnos_med + l_s11_ingles + 
+    l_log_t_establ + l_s11_lectu,
+  data = base_matching_2016,
+  method = "nearest",
+  distance = "logit",
+  ratio = 1,
+  replace = FALSE
+)
+
+summary(match_out_m1)
+bal_m1 <- bal.tab(match_out_m1, un = TRUE)
+print(bal_m1)
+love.plot(bal_m1, threshold = .1, main = "Love plot: M1 (PDET vs No PDET)")
+
+# Construcción del panel ponderado 
+datos_matched_m1 <- match.data(match_out_m1) %>%
+  select(codmpio, weights) %>%
+  distinct(codmpio, .keep_all = TRUE)
+
+base_panel_psm_m1 <- base_lags %>%
+  filter(codmpio %in% datos_matched_m1$codmpio) %>%
+  left_join(datos_matched_m1, by="codmpio")
+
+stopifnot(sum(is.na(base_panel_psm_m1$weights))==0)
+
+# DID ponderado 
+modelo_1_psm <- felm(
+  log1p(visitantes_extranjeros_no_residentes) ~ 
+    pdet * post +
+    l_log_pobl_tot + l_indrural + l_tasa_urbanizacion + l_tasa_sisben +
+    l_tasa_homicidios + l_tasa_extorsion + l_tasa_ataq_instpol + 
+    l_df_ing_propios + l_df_gast_inv + l_df_desemp_fisc +
+    l_valor_agregado_pc + l_participacion_terciarias +
+    l_tasa_docentes + l_tasa_alumnos_med + l_s11_ingles + 
+    l_log_t_establ + l_s11_lectu
+  | codmpio + ano | 0 | cod_dpto,
+  data = base_panel_psm_m1,
+  weights = base_panel_psm_m1$weights
+)
+
+# -------------------------------------------------------------------------
+# MATCHING MODELO 2: PDET TURÍSTICO vs No PDET
+# -------------------------------------------------------------------------
+
+base_matching_m2 <- base_lags %>%
+  filter(ano == 2016) %>%
+  mutate(tratamiento_m2 = if_else(pdet == 1 & vocacion_turistica == 1, 1L, 0L)) %>%
+  select(
+    codmpio, tratamiento_m2, l_log_pobl_tot, l_indrural,
+    l_tasa_urbanizacion, l_tasa_sisben, l_tasa_homicidios,
+    l_tasa_extorsion, l_df_ing_propios, l_valor_agregado_pc, l_s11_lectu
+  ) %>%
+  na.omit()
+
+set.seed(456)
+match_out_m2 <- matchit(
+  tratamiento_m2 ~ l_log_pobl_tot + l_indrural + l_tasa_urbanizacion +
+    l_tasa_sisben + l_tasa_homicidios + l_tasa_extorsion +
+    l_df_ing_propios + l_valor_agregado_pc + l_s11_lectu,
+  data = base_matching_m2,
+  method = "nearest", distance="logit", ratio=1, replace=FALSE
+)
+
+summary(match_out_m2)
+bal_m2 <- bal.tab(match_out_m2, un=TRUE)
+print(bal_m2)
+love.plot(bal_m2, threshold=.1, main="Love plot: M2")
+
+datos_matched_m2 <- match.data(match_out_m2) %>%
+  select(codmpio, weights) %>%
+  distinct(codmpio, .keep_all = TRUE)
+
+base_panel_psm_m2 <- base_lags %>%
+  filter(codmpio %in% datos_matched_m2$codmpio) %>%
+  left_join(datos_matched_m2, by="codmpio")
+
+stopifnot(sum(is.na(base_panel_psm_m2$weights))==0)
+
+modelo_2_psm <- felm(
+  log1p(visitantes_extranjeros_no_residentes) ~ 
+    tratado_tur * post + 
+    l_log_pobl_tot + l_indrural + l_tasa_urbanizacion + l_tasa_sisben +
+    l_tasa_homicidios + l_tasa_extorsion + l_tasa_ataq_instpol + 
+    l_df_ing_propios + l_df_gast_inv + l_df_desemp_fisc +
+    l_valor_agregado_pc + l_participacion_terciarias +
+    l_tasa_docentes + l_tasa_alumnos_med + l_s11_ingles + 
+    l_log_t_establ + l_s11_lectu
+  | codmpio + ano | 0 | cod_dpto,
+  data = base_panel_psm_m2,
+  weights = base_panel_psm_m2$weights
+)
+
+
+
+# -------------------------------------------------------------------------
+# MATCHING MODELO 3: Dentro de PDET (Turístico vs No Turístico)
+# -------------------------------------------------------------------------
+
+base_matching_m3 <- base_lags %>%
+  filter(ano == 2016 & pdet == 1) %>%
+  select(
+    codmpio, vocacion_turistica, l_log_pobl_tot, l_indrural,
+    l_tasa_urbanizacion, l_tasa_sisben, l_tasa_homicidios,
+    l_tasa_extorsion, l_df_ing_propios, l_valor_agregado_pc, l_s11_lectu
+  ) %>%
+  na.omit()
+
+set.seed(789)
+match_out_m3 <- matchit(
+  vocacion_turistica ~ l_log_pobl_tot + l_indrural + l_tasa_urbanizacion +
+    l_tasa_sisben + l_tasa_homicidios + l_tasa_extorsion + 
+    l_df_ing_propios + l_valor_agregado_pc + l_s11_lectu,
+  data = base_matching_m3,
+  method="nearest", distance="logit", ratio=1, replace=FALSE
+)
+
+summary(match_out_m3)
+bal_m3 <- bal.tab(match_out_m3, un=TRUE)
+print(bal_m3)
+love.plot(bal_m3, threshold=.1, main="Love plot: M3")
+
+datos_matched_m3 <- match.data(match_out_m3) %>%
+  select(codmpio, weights) %>%
+  distinct(codmpio, .keep_all = TRUE)
+
+base_panel_psm_m3 <- base_lags %>%
+  filter(codmpio %in% datos_matched_m3$codmpio) %>%
+  left_join(datos_matched_m3, by="codmpio")
+
+stopifnot(sum(is.na(base_panel_psm_m3$weights))==0)
+
+muestra_modelo3_psm <- base_panel_psm_m3 %>%
+  filter(pdet == 1) %>%  
+  mutate(
+    tratado_tur = if_else(vocacion_turistica == 1, 1L, 0L)
+  )
+
+modelo_3_psm <- felm(
+  log1p(visitantes_extranjeros_no_residentes) ~ 
+    tratado_tur * post + 
+    l_log_pobl_tot + l_indrural + l_tasa_urbanizacion + l_tasa_sisben +
+    l_tasa_homicidios + l_tasa_extorsion + l_tasa_ataq_instpol + 
+    l_df_ing_propios + l_df_gast_inv + l_df_desemp_fisc +
+    l_valor_agregado_pc + l_participacion_terciarias +
+    l_tasa_docentes + l_tasa_alumnos_med + l_s11_ingles + 
+    l_log_t_establ + l_s11_lectu
+  | codmpio + ano | 0 | cod_dpto,
+  data = muestra_modelo3_psm,
+  weights = muestra_modelo3_psm$weights
+)
+
+# ==============================================================================
+# RESULTADOS EN STARGAZER
+# ==============================================================================
+
+stargazer(
+  modelo_1_nopsm, modelo_1_psm,
+  modelo_2_nopsm, modelo_2_psm,
+  modelo_3_nopsm, modelo_3_psm,
+  title = "Resultados DiD: Comparación Sin PSM vs Con PSM",
+  type  = "text",
+  dep.var.labels = "log(1 + Visitantes Extranjeros)",
+  model.numbers = FALSE,
+  column.labels = c("M1 (DiD)", "M1 (DiD+PSM)",
+                    "M2 (DiD)", "M2 (DiD+PSM)",
+                    "M3 (DiD)", "M3 (DiD+PSM)"),
+  covariate.labels = c(
+    "PDET (Tratamiento)", "Tratado Turístico (M2)", "PDET Turístico (M3)",
+    "PDET × Post", "POST 2017", 
+    "Tratado Turístico × Post (DiD M2)", 
+    "PDET Turístico × Post (DiD M3)",
+    "Lag log población total", "Lag índice ruralidad",
+    "Lag tasa urbanización", "Lag tasa SISBEN",
+    "Lag tasa homicidios", "Lag tasa extorsión",
+    "Lag tasa ataques inst.", "Lag ingresos propios",
+    "Lag gasto inversión", "Lag desempeño fiscal",
+    "Lag valor agregado pc", "Lag participación terc."
+  )
+)
+
+```
+
+Finalmente, se comparan los modelos sin PSM y con PSM
+
+```{r}
+############################################################
+# TABULACIÓN DE MODELOS SIN PSM
+############################################################
+
+# ---------------------------------------------
+# Listado de modelos DiD sin PSM
+# ---------------------------------------------
+modelos_sin_psm <- list(
+  "M1 (DiD)" = modelo_1_nopsm, 
+  "M2 (DiD)" = modelo_2_nopsm, 
+  "M3 (DiD)" = modelo_3_nopsm
+)
+
+# ---------------------------------------------
+# Tabla en formato LaTeX
+# ---------------------------------------------
+tabla_modelos_sinpsm <- stargazer(
+  modelos_sin_psm,
+  title = "Tabla 1: Resultados DiD sin PSM (Efectos Fijos)",
+  type = "latex", 
+  dep.var.labels = "log(1 + Visitantes Extranjeros)",
+  model.numbers = FALSE,
+  column.labels = c("Modelo 1", "Modelo 2", "Modelo 3"),
+  
+  # Etiquetas de coeficientes 
+  covariate.labels = c(
+    # Interacciones (Efecto DiD)
+    "PDET  (M1)", 
+    "Tratado Turístico (M2, M3)",
+    
+    # Variables base
+    "PDET (M1)",
+    "Tratado Turístico (M2, M3)",
+    "PDET × Post",
+    
+    # Controles Lagged
+    "Lag log población total", "Lag índice ruralidad", "Lag tasa urbanización",
+    "Lag tasa SISBEN", "Lag tasa homicidios", "Lag tasa extorsión", "Lag tasa ataques inst.",
+    "Lag ingresos propios", "Lag gasto inversión", "Lag desempeño fiscal",
+    "Lag valor agregado pc", "Lag participación terc.",
+    "Lag tasa docentes", "Lag tasa alumnos media", "Lag Saber 11 inglés", 
+    "Lag log establecimientos", "Lag Saber 11 lectura"
+  ),
+  
+  # Variables incluidas 
+  keep = c(
+    "pdet:post", "tratado_tur:post", 
+    "pdet", "tratado_tur", "post",
+    "l_log_pobl_tot", "l_indrural", "l_tasa_urbanizacion", "l_tasa_sisben",
+    "l_tasa_homicidios", "l_tasa_extorsion", "l_tasa_ataq_instpol",
+    "l_df_ing_propios", "l_df_gast_inv", "l_df_desemp_fisc",
+    "l_valor_agregado_pc", "l_participacion_terciarias",
+    "l_tasa_docentes", "l_tasa_alumnos_med", "l_s11_ingles", 
+    "l_log_t_establ", "l_s11_lectu"
+  ),
+  
+  # Estadísticas 
+  omit.stat = c("f", "ser", "rsq"),
+  add.lines = list(
+    c("Efectos Fijos (Mpio & Año)", rep("Sí", 3)), 
+    c("Errores Estándar", rep("Clusterizados (Dpto)", 3))
+  ),
+  no.space = TRUE
+)
+
+# ---------------------------------------------
+# Guardar archivo .tex
+# ---------------------------------------------
+ruta_archivo <- "Graficos-tablas/tabla_modelos_sinpsm.tex"
+cat(tabla_modelos_sinpsm, file = ruta_archivo)
+
+
+
+############################################################
+# TABULACIÓN DE MODELOS CON PSM
+############################################################
+
+# ---------------------------------------------
+# Listado de modelos DiD + PSM
+# ---------------------------------------------
+modelos_con_psm <- list(
+  "M1 (DiD+PSM)" = modelo_1_psm, 
+  "M2 (DiD+PSM)" = modelo_2_psm, 
+  "M3 (DiD+PSM)" = modelo_3_psm
+)
+
+# ---------------------------------------------
+# Tabla en formato LaTeX
+# ---------------------------------------------
+tabla_modelos_psm <- stargazer(
+  modelos_con_psm,
+  title = "Tabla 2: Resultados DiD con PSM (Ponderados)",
+  type = "latex", 
+  dep.var.labels = "log(1 + Visitantes Extranjeros)",
+  model.numbers = FALSE,
+  column.labels = c("Modelo 1", "Modelo 2", "Modelo 3"),
+  
+  #  Etiquetas de coeficientes 
+  covariate.labels = c(
+    "PDET  (M1)", 
+    "Tratado Turístico (M2, M3)",
+    
+    "PDET (M1)",
+    "Tratado Turístico (M2, M3)",
+    "PDET x Post",
+    
+    # Controles lagged
+    "Lag log población total", "Lag índice ruralidad", "Lag tasa urbanización",
+    "Lag tasa SISBEN", "Lag tasa homicidios", "Lag tasa extorsión", "Lag tasa ataques inst.",
+    "Lag ingresos propios", "Lag gasto inversión", "Lag desempeño fiscal",
+    "Lag valor agregado pc", "Lag participación terc.",
+    "Lag tasa docentes", "Lag tasa alumnos media", "Lag Saber 11 inglés", 
+    "Lag log establecimientos", "Lag Saber 11 lectura"
+  ),
+  
+  # Variables incluidas 
+  keep = c(
+    "pdet:post", "tratado_tur:post", 
+    "pdet", "tratado_tur", "post",
+    "l_log_pobl_tot", "l_indrural", "l_tasa_urbanizacion", "l_tasa_sisben",
+    "l_tasa_homicidios", "l_tasa_extorsion", "l_tasa_ataq_instpol",
+    "l_df_ing_propios", "l_df_gast_inv", "l_df_desemp_fisc",
+    "l_valor_agregado_pc", "l_participacion_terciarias",
+    "l_tasa_docentes", "l_tasa_alumnos_med", "l_s11_ingles", 
+    "l_log_t_establ", "l_s11_lectu"
+  ),
+  
+  # Estadísticas
+  omit.stat = c("f", "ser", "rsq"),
+  add.lines = list(
+    c("Efectos Fijos (Mpio & Año)", rep("Sí", 3)), 
+    c("Errores Estándar", rep("Clusterizados (Dpto)", 3)),
+    c("Ponderación", rep("Pesos PSM", 3))
+  ),
+  no.space = TRUE
+)
+
+# ---------------------------------------------
+# Guardar archivo .tex
+# ---------------------------------------------
+ruta_archivo <- "Graficos-tablas/tabla_modelos_psm.tex"
+cat(tabla_modelos_psm, file = ruta_archivo)
+
+```
+
+\
+
