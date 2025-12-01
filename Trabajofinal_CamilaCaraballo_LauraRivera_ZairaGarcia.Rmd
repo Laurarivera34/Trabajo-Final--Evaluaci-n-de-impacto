@@ -10,75 +10,49 @@ output_dir: outputs
 header-includes: \usepackage{adjustbox}
 ---
 
-```{r setup, include= FALSE, echo=FALSE, message=FALSE, warning=FALSE}
-knitr::opts_chunk$set(
-  echo = FALSE,
-  message = FALSE,
-  warning = FALSE
-)
-knitr::opts_knit$set(root.dir = "C:/1. MECA/2025/EVALUACIACÓN DE IMPACTO- Raachid Raaj/Trabajo final/Trabajo-Final--Evaluaci-n-de-impacto")
-
-tinytex::tlmgr_update(self = TRUE, all = TRUE)
-
-if (!requireNamespace("tinytex", quietly = TRUE)) {
-  install.packages("tinytex")
-}
-# Verificar si TinyTeX está instalado
-if (tinytex::is_tinytex()) {
-  message("TinyTeX detectado. Actualizando instalación...")
-
-  # Actualizar gestor de paquetes (self) y todos los paquetes
-  tinytex::tlmgr_update(self = TRUE, all = TRUE)
-
-  message("✅ TinyTeX actualizado correctamente.")
-} else {
-  message("No se detecta TinyTeX. Si usas MikTeX o TeX Live, actualiza manualmente.")
-}
-```
-
-```{r results='asis', echo=FALSE}
-# Cargar liberias y paquetes
-
-# Instalando pacman si se requiere
+```{r}
+# ======================================================
+# 0. Instalación del gestor de paquetes: pacman
+# ======================================================
 if (!require("pacman")) install.packages("pacman")
 
-# Cargando los paquetes usando pacman
+# ======================================================
+# 1. Carga de paquetes por categorías
+# ======================================================
 pacman::p_load(
   
   # A) Manipulación, limpieza y visualización de datos
-  tidyverse,    # Colección de paquetes esenciales (incluye dplyr, ggplot2, etc.)
-  dplyr,        # Manipulación de datos (ya incluido en tidyverse, pero lo dejamos explícito).
-  ggplot2,      # Visualización de datos (incluido en tidyverse).
-  scales,       # Manejo de escalas (ej. porcentajes, comas).
-  skimr,        # Resúmenes estadísticos rápidos de data.frames.
+  tidyverse,    # Colección de paquetes esenciales (dplyr, ggplot2, tidyr, etc.)
+  dplyr,        # Manipulación de datos (incluido en tidyverse, se deja explícito)
+  ggplot2,      # Visualización de datos (incluido en tidyverse)
+  scales,       # Manejo de escalas (porcentajes, comas, unidades)
+  skimr,        # Resúmenes estadísticos rápidos
+  stringr,      # Manejo de strings
+  janitor,      # Limpieza de nombres y tablas
+  paletteer,    # Paletas de colores para visualización
   
-  # B) Modelado y análisis estadístico/econométrico
-  fixest,       # Modelos de efectos fijos de alto rendimiento.
-  plm,          # Modelos para datos de panel.
-  AER,          # Herramientas de econometría aplicada.
-  lmtest,       # Pruebas de hipótesis para modelos de regresión.
-  sandwich,     # Errores estándar robustos.
-  survey,       # Análisis de encuestas complejas.
-  MatchIt,      # Propensity Score Matching
-  cobalt,
-  lfe,
-  ggiplot,
-  fixest,
-  stringr,
-  stargazer,
-  paletteer,
+  # B) Modelado estadístico y econométrico
+  fixest,       # Modelos de efectos fijos eficientes
+  plm,          # Modelos de panel
+  AER,          # Econometría aplicada
+  lmtest,       # Pruebas de hipótesis para modelos
+  sandwich,     # Errores estándar robustos
+  survey,       # Análisis de encuestas complejas
+  MatchIt,      # Propensity Score Matching (PSM)
+  cobalt,       # Diagnóstico de balance para PSM
+  lfe,          # Otra librería para modelos de efectos fijos
+  ggiplot,      # Gráficos para modelos de tratamiento escalonado
+  stargazer,    # Tablas de regresión tipo artículo
+  modelsummary, # Comparación y síntesis de modelos
   
-  # C) Importación, exportación y generación de reportes
-  haven,        # Lectura/escritura de Stata, SAS, SPSS.
-  stargazer,    # Tablas de regresión con formato publicable.
-  knitr,        # Reportes dinámicos en RMarkdown.
-  modelsummary, # Tablas y resúmenes comparativos de modelos.
-  tinytex,      # Soporte para compilar a PDF con LaTeX en RMarkdown.
-  readxl,
-  kableExtra,
-  janitor,       #clean names
-  modelsummary
+  # C) Importación, exportación y reportes
+  haven,        # Lectura de archivos Stata, SPSS, SAS
+  readxl,       # Lectura de archivos Excel
+  knitr,        # Render de reportes dinámicos
+  kableExtra,   # Tablas avanzadas para RMarkdown
+  tinytex       # Compilación a PDF vía LaTeX
 )
+
 ```
 
 # 1. Limpieza de datos
