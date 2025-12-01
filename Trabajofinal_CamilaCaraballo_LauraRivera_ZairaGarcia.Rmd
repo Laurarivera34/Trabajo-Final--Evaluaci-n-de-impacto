@@ -2144,7 +2144,7 @@ base_lags_alterna <- base_lags_alterna %>% filter(!is.na(l_log_pobl_tot))
 # CREACIÓN DE MUESTRA PARA MODELO 1
 # ======================================================
 
-muestra_modelo1 <- base_lags_alterna %>%
+muestra_modelo1a <- base_lags_alterna %>%
   filter(pdet == 1) %>%  
   mutate(
     tratado_tur = if_else(vocacion_turistica == 1, 1L, 0L)
@@ -2153,7 +2153,7 @@ muestra_modelo1 <- base_lags_alterna %>%
 # ======================================================
 # MODELO 1 – DID: entre municipios PDET (sin PSM)
 # ======================================================
-modelo_1 <- felm(
+modelo_1a_nopsm <- felm(
  tasanumagencia_alterna ~ 
     tratado_tur:post  +
     l_log_pobl_tot +
@@ -2163,11 +2163,11 @@ modelo_1 <- felm(
   | codmpio + ano
   | 0 
   | cod_dpto,
-  data = muestra_modelo1
+  data = muestra_modelo1a
 )
 
 stargazer(
-  modelo_1,
+  modelo_1a_nopsm,
   title = "Modelo 1 – DiD: PDET con vocación turística vs PDET sin vocación turística (sin PSM)",
   type  = "text",   
   dep.var.labels = "tasa de empresas turísticas",
@@ -2215,7 +2215,7 @@ muestra_modelo2a <- base_lags_alterna %>%
 # MODELO 2 – DID: PDET Turístico vs No PDET (sin PSM)
 # ======================================================
 
-modelo_2 <- felm(
+modelo_2a_nopsm <- felm(
  tasanumagencia_alterna ~ 
     tratado_tur:post  +
     l_log_pobl_tot +
@@ -2229,7 +2229,7 @@ modelo_2 <- felm(
 )
 
 stargazer(
-  modelo_2,
+  modelo_2a_nopsm,
   title = "Modelo 2 – DiD: PDET con vocación turística vs No PDET (sin PSM)",
   type  = "text",   
   dep.var.labels = "tasa de empresas turísticas",
@@ -2260,7 +2260,7 @@ keep = c(
 # MODELO 3 – DID: PDET vs No PDET (sin PSM)
 # ======================================================
 
-modelo_3 <- felm(
+modelo_3a_nopsm <- felm(
  tasanumagencia_alterna ~ 
     pdet:post +
     l_log_pobl_tot +
@@ -2274,7 +2274,7 @@ modelo_3 <- felm(
 )
 
 stargazer(
-  modelo_3,
+  modelo_3a_nopsm,
   title = "Modelo 3 – DiD PDET vs No PDET (sin PSM)",
   type  = "text",
   dep.var.labels = "tasa de empresas turísticas",
@@ -2424,14 +2424,14 @@ psm_mod1 <- matchit(
 
 matched_ids1 <- match.data(psm_mod1) %>% pull(codmpio)
 
-muestra_modelo1_psm <- base_lags_alterna %>%
+muestra_modelo1a_psm <- base_lags_alterna %>%
   filter(codmpio %in% matched_ids1)
 
 # ======================================================
 # DID CON BASE EMPAREJADA – MODELO 1
 # ======================================================
 
-modelo_1_psm <- felm(
+modelo_1a_psm <- felm(
   tasanumagencia_alterna ~ 
     tratado_tur:post +
     l_log_pobl_tot +
@@ -2441,11 +2441,11 @@ modelo_1_psm <- felm(
   | codmpio + ano
   | 0 
   | cod_dpto,
-  data = muestra_modelo1_psm
+  data = muestra_modelo1a_psm
 )
 
 stargazer(
-  modelo_1_psm,
+  modelo_1a_psm,
   title = "Modelo 1 – PDET turístico vs PDET no turístico (con PSM)",
   type = "text",
   dep.var.labels = "tasa de empresas turísticas",
@@ -2484,13 +2484,13 @@ psm_mod2 <- matchit(
 
 matched_ids2 <- match.data(psm_mod2) %>% pull(codmpio)
 
-muestra_modelo2_psm <- base_lags_alterna %>%
+muestra_modelo2a_psm <- base_lags_alterna %>%
   filter(codmpio %in% matched_ids2)
 
 # ======================================================
 # DID CON BASE EMPAREJADA – MODELO 2
 # ======================================================
-modelo_2_psm <- felm(
+modelo_2a_psm <- felm(
   tasanumagencia_alterna ~ 
     tratado_tur:post +
     l_log_pobl_tot +
@@ -2500,11 +2500,11 @@ modelo_2_psm <- felm(
   | codmpio + ano
   | 0 
   | cod_dpto,
-  data = muestra_modelo2_psm
+  data = muestra_modelo2a_psm
 )
 
 stargazer(
-  modelo_2_psm,
+  modelo_2a_psm,
   title = "Modelo 2 – PDET turístico vs No PDET (con PSM)",
   type = "text",
   dep.var.labels = "tasa de empresas turísticas",
@@ -2540,14 +2540,14 @@ psm_mod3 <- matchit(
 matched_ids3 <- match.data(psm_mod3) %>% pull(codmpio)
 
 # Filtrar todo el panel solo para esos municipios
-base_matched3 <- base_lags_alterna %>%
+base_matched3a <- base_lags_alterna %>%
   filter(codmpio %in% matched_ids3)
 
 # ======================================================
 # DID CON BASE EMPAREJADA – MODELO 3
 # ======================================================
 
-modelo_3_psm <- felm(
+modelo_3a_psm <- felm(
   tasanumagencia_alterna ~ 
     pdet:post +
     l_log_pobl_tot +
@@ -2557,11 +2557,11 @@ modelo_3_psm <- felm(
   | codmpio + ano
   | 0 
   | cod_dpto,
-  data = base_matched3
+  data = base_matched3a
 )
 
 stargazer(
-  modelo_3_psm,
+  modelo_3a_psm,
   title = "Modelo 3 – DiD PDET vs No PDET (con PSM)",
   type = "text",
   dep.var.labels = "tasa de empresas turísticas",
@@ -2591,118 +2591,57 @@ stargazer(
 Finalmente, se comparan los modelos sin PSM y con PSM
 
 ```{r}
-
-# 1. TABULACIÓN DE MODELOS SIN PSM
-
-# ---------------------------------------------
-# Listado de modelos DiD sin PSM
-# ---------------------------------------------
-modelos_sin_psm <- list(
-  "M1 (DiD)" = modelo_1_nopsm, 
-  "M2 (DiD)" = modelo_2_nopsm, 
-  "M3 (DiD)" = modelo_3_nopsm
-)
-
-# ---------------------------------------------
-# Tabla en formato LaTeX
-# ---------------------------------------------
-tabla_modelos_sinpsm <- stargazer(
-  modelos_sin_psm,
-  title = "Tabla 1: Resultados DiD sin PSM (Efectos Fijos)",
-  type = "latex", 
-  dep.var.labels = "Tasa de empresas turísticas",
-  model.numbers = FALSE,
-  column.labels = c("Modelo 1", "Modelo 2", "Modelo 3"),
-  
-  # Etiquetas de coeficientes
-  covariate.labels = c(
-    "PDET × Post (M1)", 
-    "Turístico × Post (M2, M3)",
-    "Lag log población total",
-    "Lag tasa urbanización",
-    "Lag tasa SISBEN",
-    "Lag participación terciarias"
-  ),
-  
-  # Variables incluidas
-  keep = c(
-    "pdet:post", "tratado_tur:post",
-    "l_log_pobl_tot", 
-    "l_tasa_urbanizacion",
-    "l_tasa_sisben",
-    "l_participacion_terciarias"
-  ),
-  
-  # ---------------------------
-  # Estadísticas adicionales
-  # ---------------------------
-  omit.stat = c("f", "ser", "rsq"),
-  add.lines = list(
-    c("Efectos Fijos (Mpio & Año)", rep("Sí", 3)), 
-    c("Errores Estándar", rep("Clusterizados (Dpto)", 3))
-  ),
-  
-  no.space = TRUE
-)
-
-# Guardar archivo .tex
-cat(tabla_modelos_sinpsm, 
-    file = "Graficos-tablas/tabla_modelos_sinpsm.tex")
-
-
-# 2. TABULACIÓN DE MODELOS CON PSM
-# ---------------------------------------------
-# Listado de modelos DiD + PSM
-# ---------------------------------------------
+# Lista de modelos
 modelos_con_psm <- list(
-  "M1 (DiD+PSM)" = modelo_1_psm, 
-  "M2 (DiD+PSM)" = modelo_2_psm, 
-  "M3 (DiD+PSM)" = modelo_3_psm
+  "Modelo 1" = modelo_1a_psm,
+  "Modelo 2" = modelo_2a_psm,
+  "Modelo 3" = modelo_3a_psm
 )
 
-# ---------------------------------------------
-# Tabla en formato LaTeX
-# ---------------------------------------------
+# Crear la tabla combinada
 tabla_modelos_psm <- stargazer(
   modelos_con_psm,
-  title = "Tabla 2: Resultados DiD con PSM (Ponderados)",
-  type = "latex", 
+  title = "Resultados DiD con PSM (Ponderados)",
+  type = "latex",
   dep.var.labels = "Tasa de empresas turísticas",
   model.numbers = FALSE,
   column.labels = c("Modelo 1", "Modelo 2", "Modelo 3"),
   
-# Etiquetas
+  # Seleccionar variables y orden correcto
+  keep = c(
+    "l_log_pobl_tot",
+    "l_tasa_urbanizacion",
+    "l_tasa_sisben",
+    "l_participacion_terciarias",
+    "tratado_tur:post",
+    "pdet:post"
+  ),
+  
+  # Etiquetas personalizadas
   covariate.labels = c(
-    "PDET × Post (M1)", 
-    "Turístico × Post (M2, M3)",
     "Lag log población total",
     "Lag tasa urbanización",
     "Lag tasa SISBEN",
-    "Lag participación terciarias"
+    "Lag participación sector terciario",
+    "Tratado × Post (M1 & M2)",
+    "PDET × Post (M3)"
   ),
   
-  # Variables incluidas
-  keep = c(
-    "pdet:post", "tratado_tur:post",
-    "l_log_pobl_tot", 
-    "l_tasa_urbanizacion",
-    "l_tasa_sisben",
-    "l_participacion_terciarias"
-  ),
-  
+  # Omitir algunos estadísticos
   omit.stat = c("f", "ser", "rsq"),
+  
+  # Agregar líneas adicionales
   add.lines = list(
-    c("Efectos Fijos (Mpio & Año)", rep("Sí", 3)), 
-    c("Errores Estándar", rep("Clusterizados (Dpto)", 3)),
+    c("Efectos Fijos (Mpio & Año)", rep("Sí", 3)),
     c("Ponderación", rep("Pesos PSM", 3))
   ),
+  
   no.space = TRUE
 )
 
 # Guardar archivo .tex
 cat(tabla_modelos_psm, 
-    file = "Graficos-tablas/tabla_modelos_psm.tex")
-
+    file = "Graficos-tablas/tabla_modelos_psm_alterna.tex")
 
 ```
 
