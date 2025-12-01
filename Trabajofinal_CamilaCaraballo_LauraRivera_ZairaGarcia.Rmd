@@ -81,7 +81,7 @@ pacman::p_load(
 )
 ```
 
-## 1. Limpieza de datos
+# 1. Limpieza de datos
 
 ```{r}
 # ======================================================================
@@ -678,7 +678,7 @@ dup
 
 ```
 
-## 2. Estadísticas Descriptivas con la base completa
+# 2. Estadísticas Descriptivas con la base completa
 
 ```{r}
 
@@ -970,11 +970,11 @@ save_kable(tabla_pdet_turismo, "Graficos-tablas/tabla_proporcion_pdet_turismo.ht
 
 ```
 
-## *3. Visitantes extranjeros*
+# 3. Visitantes extranjeros
 
 La estrategia de identificación se basa en un modelo de diferencias en diferencias (DiD) que compara la evolución del turismo internacional entre municipios PDET y no PDET antes y después de 2017. La asignación de los 170 municipios PDET fue definida por criterios exógenos establecidos en el Decreto Ley 893 de 2017, lo que respalda la validez del diseño.
 
-Los tres modelos estiman el efecto del tratamiento sobre los **visitantes extranjeros no residentes**, usando la metodología de Difference-in-Differences (DiD)\*\* con efectos fijos por municipio y año
+Los tres modelos estiman el efecto del tratamiento sobre los **visitantes extranjeros no residentes**, usando la metodología de Difference-in-Differences (DiD) con efectos fijos por municipio y año
 
 1)  El Modelo 1 restringe la muestra únicamente a los municipios PDET y compara aquellos con vocación turística frente a los que no la tienen. Es un análisis interno dentro de los PDET para evaluar si la vocación turística amplifica el efecto posterior a 2017.
 
@@ -1524,11 +1524,11 @@ modelsummary(
 
 \
 
-## 4 Tasa de empresas turísticas
+# 4 Tasa de empresas turísticas
+
+Como se explicó en la sesión 3, la estrategia de identificación se basa en un modelo de diferencias en diferencias (DiD), pero en este apartado se cambia la variable dependiente por la tasa de empresas turísticas y se corren los tres modelos explicados anteriormente.
 
 #### 4.1 Tendencias Paralelas sin PSM
-
-La estrategia de identificación se basa en un modelo de diferencias en diferencias (DiD) que compara la evolución del turismo formal entre municipios PDET y no PDET antes y después de 2017. La asignación de los 170 municipios PDET fue definida por criterios exógenos establecidos en el Decreto Ley 893 de 2017, lo que respalda la validez del diseño. Como primer paso, realizamos un estudio de eventos para evaluar el supuesto fundamental del enfoque DiD: las tendencias paralelas, según el cual ambos grupos habrían seguido trayectorias similares en ausencia del programa.
 
 Los valores del gráfico representan la distancia temporal respecto al año del tratamiento: –4 corresponde a cuatro años antes (2013), –3 a tres años antes (2014), –2 a dos años antes (2015) y –1 al año inmediatamente anterior (2016). El valor 0 indica el año del tratamiento (2017). Los valores positivos reflejan el período posterior: +1 equivale a un año después (2018), +2 a dos años después (2019), +3 a tres años después (2020) y +4 a cuatro años después (2021).
 
@@ -1591,15 +1591,7 @@ dev.off()
 
 ```
 
-#### 4.2 Modelo sin PSM con nuevas variables y aproximación comparada
-
-Los tres modelos estiman efectos causales mediante Diferencias en Diferencias, pero sobre poblaciones comparativas distintas.
-
-1)  El Modelo 1 evalúa el impacto general de los municipios PDET frente a los no PDET, comparando ambos grupos antes y después de 2017.
-
-2)  El Modelo 2 se centra únicamente en los PDET con vocación turística, contrastándolos con los municipios no PDET para medir si el componente turístico amplifica los efectos del programa.
-
-3)  El Modelo 3 restringe la muestra solo a municipios PDET y compara aquellos con vocación turística frente a los que no la tienen, analizando diferencias internas.
+#### 4.2 Modelo sin PSM con nuevas variables
 
 ```{r}
 
@@ -1806,7 +1798,41 @@ stargazer(
 )
 ```
 
-#### 4.3 Tendencias Parelalas con PSM
+#### 4.3 Tabla de comparación sin PSM
+
+```{r}
+# ==============================================================================
+# RESULTADOS EN LATEX – COMPARACIÓN DE MODELOS (SIN PSM)
+# ==============================================================================
+coef_map_alt <- c(
+  # Interacciones DiD
+  "tratado_tur:post"             = "Tratado turístico × Post (M1 y M2)",
+  "pdet:post"                    = "PDET × Post (M3)",
+
+  # Controles
+  "l_log_pobl_tot"               = "Lag log población total",
+  "l_tasa_urbanizacion"          = "Lag tasa urbanización",
+  "l_tasa_sisben"                = "Lag tasa SISBEN",
+  "l_participacion_terciarias"   = "Lag participación terciarias"
+)
+
+modelsummary(
+  list(
+    "M1: PDET turísticos vs PDET no turísticos" = modelo_1a_nopsm,
+    "M2: PDET turísticos vs No PDET"            = modelo_2a_nopsm,
+    "M3: PDET vs No PDET (general)"             = modelo_3a_nopsm
+  ),
+  estimate  = "{estimate}{stars}",
+  statistic = "({std.error})",
+  coef_map  = coef_map_alt,
+  vcov      = function(x) x$clustervcv,
+  title     = "Resultados DiD – Tasa de empresas turísticas (sin PSM)",
+  output    = "latex_tabular"
+)
+
+```
+
+#### 4.4 Tendencias Parelalas con PSM
 
 ```{r}
 # ======================================================
@@ -1898,7 +1924,7 @@ dev.off()
 
 ```
 
-#### 4.4 Modelo con PSM, nuevas variables y aproximación comparada
+#### 4.5 Modelo con PSM, nuevas variables y aproximación comparada
 
 En este código se implementa Propensity Score Matching (PSM) para construir un grupo de control comparable usando las características basales de los municipios, se obtienen los pesos generados por el emparejamiento y se incorporan a un modelo de Diferencias en Diferencias estimado con felm(), manteniendo efectos fijos por municipio y año. Además, se evalúa el balance antes y después del matching con cobalt y finalmente se generan tablas de resultados con stargazer, replicando tus modelos previos pero ahora ajustados por PSM.
 
@@ -2092,63 +2118,43 @@ stargazer(
 
 ```
 
-## 5. Tabla comparación
-
-Finalmente, se comparan los modelos sin PSM y con PSM
+#### 4.6 Tabla de comparación con PSM
 
 ```{r}
-# Lista de modelos
-modelos_con_psm <- list(
-  "Modelo 1" = modelo_1a_psm,
-  "Modelo 2" = modelo_2a_psm,
-  "Modelo 3" = modelo_3a_psm
+
+# ==============================================================================
+# TABLA LATEX – COMPARACIÓN DE MODELOS (CON PSM)
+# ==============================================================================
+coef_map_psm <- c(
+  # Interacciones DiD
+  "tratado_tur:post"             = "Tratado turístico × Post (M1 y M2)",
+  "pdet:post"                    = "PDET × Post (M3)",
+
+  # Controles
+  "l_log_pobl_tot"               = "Lag log población total",
+  "l_tasa_urbanizacion"          = "Lag tasa urbanización",
+  "l_tasa_sisben"                = "Lag tasa SISBEN",
+  "l_participacion_terciarias"   = "Lag participación terciarias"
 )
 
-# Crear la tabla combinada
-tabla_modelos_psm <- stargazer(
-  modelos_con_psm,
-  title = "Resultados DiD con PSM (Ponderados)",
-  type = "latex",
-  dep.var.labels = "Tasa de empresas turísticas",
-  model.numbers = FALSE,
-  column.labels = c("Modelo 1", "Modelo 2", "Modelo 3"),
-  
-  # Seleccionar variables y orden correcto
-  keep = c(
-    "l_log_pobl_tot",
-    "l_tasa_urbanizacion",
-    "l_tasa_sisben",
-    "l_participacion_terciarias",
-    "tratado_tur:post",
-    "pdet:post"
+modelsummary(
+  list(
+    "M1: PDET turísticos vs PDET no turísticos (con PSM)" = modelo_1a_psm,
+    "M2: PDET turísticos vs No PDET (con PSM)"            = modelo_2a_psm,
+    "M3: PDET vs No PDET (con PSM)"                       = modelo_3a_psm
   ),
-  
-  # Etiquetas personalizadas
-  covariate.labels = c(
-    "Lag log población total",
-    "Lag tasa urbanización",
-    "Lag tasa SISBEN",
-    "Lag participación sector terciario",
-    "Tratado × Post (M1 & M2)",
-    "PDET × Post (M3)"
-  ),
-  
-  # Omitir algunos estadísticos
-  omit.stat = c("f", "ser", "rsq"),
-  
-  # Agregar líneas adicionales
-  add.lines = list(
-    c("Efectos Fijos (Mpio & Año)", rep("Sí", 3)),
-    c("Ponderación", rep("Pesos PSM", 3))
-  ),
-  
-  no.space = TRUE
+  estimate  = "{estimate}{stars}",
+  statistic = "({std.error})",
+  coef_map  = coef_map_psm,
+  vcov      = function(x) x$clustervcv,
+  title     = "Resultados DiD – Tasa de empresas turísticas (con PSM)",
+  output    = "latex_tabular"
 )
-
-# Guardar archivo .tex
-cat(tabla_modelos_psm, 
-    file = "Graficos-tablas/tabla_modelos_psm_alterna.tex")
 
 ```
 
-#6. Pruebas de robustez
+# 5. Pruebas de robustez
+```{r}
+
+```
+
