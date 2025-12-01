@@ -678,7 +678,7 @@ dup
 
 ```
 
-## 2. Estadísticas Descriptivas con la base completa (Falta)
+## 2. Estadísticas Descriptivas con la base completa 
 
 ```{r}
 
@@ -995,7 +995,7 @@ base_total_event <- panel(
 )
 
 # ======================================================
-# 2. ESTIMAR MODELO (asegurar nombre correcto de homicidios)
+# 2. ESTIMAR MODELO 
 # ======================================================
 
 modelo_sunab <- feols(
@@ -1011,10 +1011,10 @@ modelo_sunab <- feols(
 etable(modelo_sunab, fitstat = c("n", "r2"))
 
 # ======================================================
-# 3. GRÁFICO EVENT STUDY (con pal, sin grillas y con eje)
+# 3. GRÁFICO EVENT STUDY 
 # ======================================================
 
-# Paleta creada por ti
+# Paleta de color
 pal <- paletteer_c("grDevices::BluGrn", 30)
 col_evento <- pal[1]
 
@@ -1035,10 +1035,10 @@ png(
 )
 
 # Parámetros del gráfico
-par(bty = "l")   # limpia bordes
+par(bty = "l")  
 par(xaxs = "i", yaxs = "i")
 
-# Gráfico principal
+# Gráfico
 iplot(
   modelo_sunab,
   main = "Impacto PDET sobre Visitantes Extranjeros",
@@ -1047,7 +1047,7 @@ iplot(
   col = col_evento,
   ref.line = 0,
   pt.pch = 20,
-  grid = FALSE     # ❌ sin grillas
+  grid = FALSE     
 )
 
 # Línea vertical en t = 0
@@ -1075,9 +1075,6 @@ Los tres modelos estiman efectos causales mediante Diferencias en Diferencias, p
 3)  El Modelo 3 restringe la muestra solo a municipios PDET y compara aquellos con vocación turística frente a los que no la tienen, analizando diferencias internas.
 
 ```{r}
-
-############ OPCIÓN A
-
 ##### MODELO 1: Diferencias en Diferencias – Municipios PDET vs No PDET
 
 # ======================================================
