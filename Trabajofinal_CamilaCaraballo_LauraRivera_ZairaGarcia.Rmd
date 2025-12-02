@@ -802,6 +802,9 @@ plot_box_pdet <- function(df, vars, titulo){
 ############################################################
 # GRÁFICOS POR CATEGORÍA
 ############################################################
+theme_horizontal_labels <- theme(
+  axis.text.x = element_text(angle = 0, hjust = 0.5)
+)
 
 graf_violencia <- plot_means(base_completa,
            c("tasa_homicidios","tasa_extorsion"),
@@ -1823,6 +1826,9 @@ stargazer(
 #### 4.3 Tabla de comparación sin PSM
 
 ```{r}
+modelo_1a_nopsm
+modelo_2a_nopsm
+modelo_3a_nopsm
 # ==============================================================================
 # RESULTADOS EN LATEX – COMPARACIÓN DE MODELOS (SIN PSM)
 # ==============================================================================
@@ -2180,56 +2186,44 @@ modelsummary(
 ## 5.1 Tendencias paralelas modelo final
 
 ```{r}
-# --- 0. Definiciones y Fórmulas ---
-# La variable de tratamiento es la misma que usas en tu PSM: 'tratado_tur'.
+
+# Seleccionan variables
 covariables_psm <- c(
   "log_pobl_tot", "tasa_urbanizacion", "tasa_sisben", "participacion_terciarias"
 )
 formula_psm <- as.formula(paste("tratado_tur ~ ", paste(covariables_psm, collapse = " + ")))
 
-# Variable de tiempo (asumida de tu modelo)
 variable_dependiente <- "tasanumagencia_alterna"
 
 
 # ======================================================
-# 1. PSM PREVIO AL EVENT STUDY (Full Matching)
+# 1. PSM PREVIO AL EVENT STUDY
 # ======================================================
 # Usamos los datos de 2016 (periodo pre-tratamiento) para el matching.
 psm_event <- matchit(
   formula_psm,
   data = muestra_modelo1a_psm %>% filter(ano == 2016),
-  method = "full" # Consistente con la robustez elegida
+  method = "full" 
 )
 
 # Obtener los datos emparejados (con pesos)
 df_matched_event <- match.data(psm_event)
-
-# -----------------------------------------------------------------------------
-# Unimos los pesos a todo el panel original 'muestra_modelo1a_psm'
-# Esto asegura que la regresión feols tenga los pesos correctos en todos los años.
 df_event_study <- muestra_modelo1a_psm %>%
-  # Unimos los pesos del Full Matching por el identificador del municipio
   left_join(df_matched_event %>% select(codmpio, weights), 
             by = "codmpio") %>%
-  # Si un municipio no estaba en la base de matching, su peso es NA, lo ponemos en 1 para evitar problemas
   mutate(weights = ifelse(is.na(weights), 1, weights))
-# -----------------------------------------------------------------------------
-
 
 # ======================================================
 # 2. CREAR AÑO DE TRATAMIENTO
 # ======================================================
 df_event_study <- df_event_study %>%
   mutate(
-    # trat_year solo se activa en 2017 para los municipios tratados_tur == 1
     treat_year = if_else(tratado_tur == 1, 2017, Inf) 
   )
 
 # ======================================================
-# 3. ESTIMAR MODELO EVENT STUDY CON PESOS (feols)
+# 3. ESTIMAR MODELO EVENT STUDY CON PESOS
 # ======================================================
-
-# Usamos sunab para el Event Study y mantenemos los mismos controles, FEs y clustering de tu modelo base.
 modelo_event_study <- feols(
   tasanumagencia_alterna ~ 
     sunab(treat_year, ano, ref.p = -1) + 
@@ -2247,10 +2241,8 @@ modelo_event_study <- feols(
 etable(modelo_event_study, fitstat = c("n", "r2"))
 
 # ======================================================
-# 4. GRÁFICO EVENT STUDY (iplot)
+# 4. GRÁFICO EVENT STUDY
 # ======================================================
-
-# Guardar y graficar como lo has venido haciendo
 iplot(
   modelo_event_study,
   xlab = "Años relativos al tratamiento (Año base: 2017)",
@@ -2262,7 +2254,7 @@ iplot(
   grid = TRUE
 )
 
-# Guardar el gráfico
+# Guardar 
 robustez_1 <- recordPlot()
 
 png("Graficos-tablas/modelo_pdet_turistico_robustez_1.png",
@@ -2288,17 +2280,14 @@ variable_tratamiento <- "tratado_tur"
 # Variable dependiente
 variable_dependiente <- "tasanumagencia_alterna"
 
-# Fórmulas ajustadas dinámicamente
 formula_psm <- as.formula(paste(variable_tratamiento, " ~ ", paste(covariables_psm, collapse = " + ")))
-
-# Formula DiD con todos los Controles (similar a tu felm, pero sin los FEs por ahora)
 formula_did_completa <- as.formula(paste(variable_dependiente, " ~ tratado_tur:post + ", paste(covariables_psm, collapse = " + ")))
 
 # ======================================================
 # Robustez del Propensity Score Matching (PSM)
 # ======================================================
 
-# Matching con full 
+# Matching 
 m.out.full <- matchit(formula_psm,
                         data = muestra_modelo1a_psm,
                         method = "full")
@@ -2313,10 +2302,6 @@ modelo_full_felm <- felm(tasanumagencia_alterna ~ tratado_tur:post + l_log_pobl_
 
 # Tabla de balance para el matching full matching 
 bal.tab(m.out.full, un = TRUE, stats = c("m", "sd", "ks"), binary = "std")
-
-# Visualizar el balance (para demostrar que las diferencias están por debajo de 0.1)
-#love.plot(m.out.full, stats = "mean.diffs", threshold = 0.1,
-#          wrap = 50, abs = TRUE)
 
 # Guardar gráfica
 png("Graficos-tablas/robustez_2_psm_full_matching.png", 
