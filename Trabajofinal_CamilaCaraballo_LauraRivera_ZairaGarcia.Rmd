@@ -675,7 +675,7 @@ vars_interes <- c(
   "t_establ", "s11_lectu", "llegadas_pasajeros_nacionales",
   "llegadas_internacionales", "visitantes_extranjeros_no_residentes",
   "visitantes_pnn", "prestadores_de_servicios_turisticos_activos",
-  "establecimientos_de_alojamiento_y_hospedaje"
+  "establecimientos_de_alojamiento_y_hospedaje", "tasa_empr_tur_alterna"
 )
 
 nombres_descriptivos_dicc <- c(
@@ -687,10 +687,10 @@ nombres_descriptivos_dicc <- c(
   "tasa_extorsion" = "Tasa de extorsión",
   "tasa_ataq_instpol" = "Tasa ataques a instituciones",
   "df_ing_propios" = "Ingresos propios",
-  "df_gast_inv" = "Gasto de inversión",
-  "df_desemp_fisc" = "Desempeño fiscal",
+  "df_gast_inv" = "Gasto de Inv.",
+  "df_desemp_fisc" = "Desemp. Fiscal",
   "valor_agregado_pc" = "Valor agregado per cápita",
-  "participacion_terciarias" = "Participación sector terciario",
+  "participacion_terciarias" = "Part. Sec. Terc.",
   "tasa_docentes" = "Tasa de docentes",
   "tasa_alumnos_med" = "Tasa alumnos educación media",
   "s11_ingles" = "Saber 11 Inglés",
@@ -701,9 +701,9 @@ nombres_descriptivos_dicc <- c(
   "visitantes_extranjeros_no_residentes" = "Visitantes extranjeros no residentes",
   "visitantes_pnn" = "Visitantes Parques naturales",
   "prestadores_de_servicios_turisticos_activos" = "Prestadores servicios turísticos activos",
-  "establecimientos_de_alojamiento_y_hospedaje" = "Establecimientos de alojamiento y hospedaje"
+  "establecimientos_de_alojamiento_y_hospedaje" = "Establecimientos de alojamiento y hospedaje",
+  "tasa_empr_tur_alterna" = "Tasa Empresas Tur."
 )
-
 
 ############################################################
 # FUNCIONES DE GRÁFICOS
@@ -720,7 +720,17 @@ plot_means <- function(df, vars, titulo){
     group_by(pdet, variable) %>%
     summarise(media = mean(valor, na.rm = TRUE), .groups = "drop") %>%
     ggplot(aes(x = variable, y = media, fill = factor(pdet))) +
-    geom_col(position = "dodge") +
+    geom_col(position = "dodge", width = 0.7) +
+    
+    # 2. Etiquetas de texto: Ajuste de vjust y color
+    geom_text(
+      aes(label = round(media, 1)),
+      position = position_dodge(width = 0.7), 
+      vjust = 1.5,   
+      color = "black",
+      size = 3.5    
+    ) +
+    
     scale_fill_manual(values = pal[c(5, 25)], labels = c("No PDET", "PDET")) +
     theme_bw() +
     theme(panel.grid.major = element_blank(),
@@ -794,59 +804,55 @@ plot_box_pdet <- function(df, vars, titulo){
 ############################################################
 
 graf_violencia <- plot_means(base_completa,
-           c("tasa_homicidios","tasa_extorsion","tasa_ataq_instpol"),
-           "Variables de Violencia")
+           c("tasa_homicidios","tasa_extorsion"),
+           "Variables de Violencia") + theme_horizontal_labels
 
 graf_econo <- plot_means(base_completa,
-           c("df_ing_propios","df_gast_inv","df_desemp_fisc","valor_agregado_pc"),
-           "Variables Económicas")
+           c("df_ing_propios","df_gast_inv","df_desemp_fisc", "participacion_terciarias"),
+           "Variables Económicas") + theme_horizontal_labels
 
 graf_social <- plot_means(base_completa,
            c("tasa_urbanizacion","tasa_sisben"),
-           "Variables Sociales")
+           "Variables Sociales") + theme_horizontal_labels
 
-graf_turismo <- plot_means(base_completa,
-           c("llegadas_pasajeros_nacionales","llegadas_internacionales",
-             "visitantes_extranjeros_no_residentes","visitantes_pnn"),
-           "Variables de Turismo")
+graf_turismo1 <- plot_means(base_completa,
+           c("llegadas_internacionales",
+             "visitantes_extranjeros_no_residentes"),
+           "Variables de Turismo") + theme_horizontal_labels
+
+graf_turismo2 <- plot_means(base_alterna,
+           c("tasa_empr_tur_alterna"),
+           "Variables de Turismo") + theme_horizontal_labels
 
 # BOXPLOTS
 graf_box_violencia <- plot_box(base_completa,
-           c("tasa_homicidios","tasa_extorsion","tasa_ataq_instpol"),
-           "Distribución de Variables de Violencia")
+           c("tasa_homicidios","tasa_extorsion"),
+           "Distribución de Variables de Violencia") + theme_horizontal_labels
 
 graf_box_econo <- plot_box(base_completa,
-           c("df_ing_propios","df_gast_inv","df_desemp_fisc","valor_agregado_pc"),
-           "Distribución de Variables Económicas")
+           c("df_ing_propios","df_gast_inv","df_desemp_fisc", "participacion_terciarias"),
+           "Distribución de Variables Económicas") + theme_horizontal_labels
 
 graf_box_social <- plot_box(base_completa,
            c("tasa_urbanizacion","tasa_sisben"),
-           "Distribución de Variables Sociales")
-
-graf_box_turismo <- plot_box(base_completa,
-           c("llegadas_pasajeros_nacionales","llegadas_internacionales",
-             "visitantes_extranjeros_no_residentes","visitantes_pnn"),
-           "Distribución de Variables de Turismo")
-
+           "Distribución de Variables Sociales") + theme_horizontal_labels
 
 ############################################################
 # LISTA PARA GUARDAR GRÁFICOS
 ############################################################
 
 graficos_estadisticas <- list(
-  graf_violencia, graf_econo, graf_social, graf_turismo,
-  graf_box_violencia, graf_box_econo, graf_box_social, graf_box_turismo
+  graf_econo, graf_social, graf_turismo2,
+  graf_box_violencia, graf_box_econo, graf_box_social
 )
 
 nombres_archivo <- c(
-  "Graficos-tablas/grafico_barras_violencia.png",
   "Graficos-tablas/grafico_barras_economicas.png",
   "Graficos-tablas/grafico_barras_sociales.png",
-  "Graficos-tablas/grafico_barras_turismo.png",
+  "Graficos-tablas/grafico_barras_empresasturismo.png",  
   "Graficos-tablas/grafico_boxplot_violencia.png",
   "Graficos-tablas/grafico_boxplot_economicas.png",
-  "Graficos-tablas/grafico_boxplot_sociales.png",
-  "Graficos-tablas/grafico_boxplot_turismo.png"
+  "Graficos-tablas/grafico_boxplot_sociales.png"
 )
 
 
@@ -868,16 +874,17 @@ for(i in seq_along(graficos_estadisticas)){
 ############################################################
 
 vars_graficos <- c(
-  "tasa_homicidios","tasa_extorsion","tasa_ataq_instpol",
-  "df_ing_propios","df_gast_inv","df_desemp_fisc","valor_agregado_pc",
+  "df_ing_propios",
+  "df_gast_inv",
+  "df_desemp_fisc",
   "tasa_urbanizacion","tasa_sisben",
-  "llegadas_pasajeros_nacionales","llegadas_internacionales",
-  "visitantes_extranjeros_no_residentes","visitantes_pnn"
+  "participacion_terciarias",
+  "tasa_empr_tur_alterna"
 )
 
 nombres_descriptivos_tabla <- nombres_descriptivos_dicc[vars_graficos]
 
-tabla_aer <- base_completa %>%
+tabla_aer <- base_alterna %>%
   filter(pdet %in% c(0,1)) %>%
   select(pdet, all_of(vars_graficos)) %>%
   pivot_longer(cols = all_of(vars_graficos), names_to = "variable", values_to = "valor") %>%
@@ -899,16 +906,29 @@ tabla_aer <- base_completa %>%
   ) %>%
   mutate(variable = nombres_descriptivos_tabla)
 
+nombres_subcolumnas <- c(
+  "Min", "Q1", "Promedio", "Mediana", "Q3", "Max", "Desv."
+)
+
+nombres_finales <- c(
+  "Variable",
+  nombres_subcolumnas, # 7 nombres para No PDET
+  nombres_subcolumnas  # 7 nombres para PDET
+)
+
+
 tabla_html <- tabla_aer %>%
   kable(
     caption = "Estadísticas descriptivas por municipio PDET y No PDET",
-    digits = 2, format = "html",
-    col.names = c(
-      "Variable",
-      "Min (No PDET)", "Q1 (No PDET)", "Promedio (No PDET)", "Mediana (No PDET)",
-      "Q3 (No PDET)", "Max (No PDET)", "Desv. (No PDET)",
-      "Min (PDET)", "Q1 (PDET)", "Promedio (PDET)", "Mediana (PDET)",
-      "Q3 (PDET)", "Max (PDET)", "Desv. (PDET)"
+    digits = 2, 
+    format = "html",
+    col.names = nombres_finales 
+  ) %>%
+  
+  add_header_above(
+    c(" " = 1,                 
+      "No PDET" = 7,           # Agrupa 7 columnas
+      "PDET" = 7               # Agrupa 7 columnas
     )
   ) %>%
   kable_classic(full_width = FALSE, html_font = "Cambria")
@@ -941,6 +961,34 @@ tabla_pdet_turismo <- proporcion_pdet_turismo %>%
   kable_classic(full_width = FALSE, html_font = "Cambria")
 
 save_kable(tabla_pdet_turismo, "Graficos-tablas/tabla_proporcion_pdet_turismo.html")
+
+
+# Tabla para LATEX
+
+nombres_subcolumnas <- c("Min", "Q1", "Promedio", "Mediana", "Q3", "Max", "Desv.")
+
+nombres_finales <- c(
+  "Variable",
+  nombres_subcolumnas, # 7 No PDET
+  nombres_subcolumnas  # 7 PDET
+)
+
+align_spec <- "l | ccccccc || ccccccc" 
+
+tabla_latex_final <- kbl(
+    tabla_aer, 
+    format = "latex", 
+    col.names = nombres_finales,
+    align = align_spec, 
+    booktabs = TRUE,
+    caption = "Estadísticas descriptivas por municipio PDET y No PDET",
+    digits = 2
+)
+
+tabla_latex_final <- tabla_latex_final %>%
+    add_header_above(c(" " = 1, "No PDET" = 7, "PDET" = 7))
+
+cat(tabla_latex_final)
 
 ```
 
@@ -2128,7 +2176,7 @@ modelsummary(
 ```
 
 # 5. Pruebas de robustez
+
 ```{r}
 
 ```
-
