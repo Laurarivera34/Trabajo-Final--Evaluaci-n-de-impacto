@@ -68,10 +68,6 @@ gobierno       <- read_excel("Datos/PANEL_BUEN_GOBIERNO(2024).xlsx")
 caracteristicas <- read_excel("Datos/PANEL_CARACTERISTICAS_GENERALES(2024).xlsx")
 mpiopdet       <- read_excel("Datos/MunicipiosPDET.xlsx")
 turismo        <- read_excel("Datos/turismo.xlsx")
-#empresas_turisticas <- read_excel("Datos/empresas_activas_turismo.xlsx")
-#indicadores_demo <- read_excel("Datos/indicadores_demograficos.xlsx")
-#indicadores_econ <- read_excel("Datos/indicadores_econ.xlsx")
-#indicadores_seg <- read_excel("Datos/indicadores_seguridad.xlsx")
 
 
 # ======================================================================
